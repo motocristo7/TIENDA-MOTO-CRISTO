@@ -1,0 +1,6 @@
+{
+  "name": "Mercado Moto CC",
+  "description": "Tienda online de repuestos y portal de autoservicio exclusiva para clientes de Servimotos Cristo Centro. Catálogo con marcas venezolanas, tasa oficial BCV, envíos nacionales y rastreo de motos en taller.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

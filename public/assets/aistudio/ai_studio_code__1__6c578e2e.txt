@@ -1,0 +1,25 @@
+mercadomotocc-app/
+├── index.html                   # HTML con metadatos SEO y OpenGraph para Mercado Moto CC
+├── package.json                 # Dependencias optimizadas (React 19, Vite 6, Tailwind CSS v4, Lucide)
+├── vite.config.ts               # Configuración Vite con Tailwind CSS
+├── tsconfig.json                # Configuración TypeScript estricta
+├── .env.example                 # Variables de entorno para conectar la base de datos compartida
+├── README.md                    # Documentación completa y comandos para GitHub / Vercel
+└── src/
+    ├── main.tsx                 # Punto de entrada de la aplicación
+    ├── index.css                # Estilos globales Tailwind CSS v4
+    ├── App.tsx                  # Componente raíz exclusivo para clientes
+    ├── types/
+    │   └── index.ts             # Tipos TypeScript compartidos (Product, Cart, Settings, ServiceOrder)
+    ├── services/
+    │   └── api.ts               # Cliente para sincronizar con la base de datos central y tasa BCV
+    ├── utils/
+    │   └── formatters.ts        # Formateo dual ($ / Bs.) y generador de enlaces de WhatsApp
+    ├── context/
+    │   └── StoreContext.tsx     # Contexto global: sincronización en vivo cada 20s y carrito persistente
+    └── components/
+        ├── Navbar.tsx           # Barra superior: Logo Mercado Moto CC, tasa BCV en vivo y Carrito
+        ├── Catalog.tsx          # Catálogo con buscador en tiempo real, filtros de categoría y marcas de motos
+        ├── CartDrawer.tsx       # Carrito lateral: checkout con entregas (MRW, Zoom, Tealca) y pagos venezolanos
+        ├── CustomerPortal.tsx   # Portal de autoservicio para consultar estatus de moto por teléfono o placa
+        └── Footer.tsx           # Pie de página informativo con RIF, dirección física y horarios
