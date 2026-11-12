@@ -117,6 +117,28 @@ function normalizeProduct(item: any, baseUrl: string): Product {
   const isOriginal = Boolean(item.isOriginal ?? item.original ?? item.es_original ?? false);
   const featured = Boolean(item.featured ?? item.destacado ?? false);
 
+  // Published / Visibility state in the main Servimotos Cristo Centro application
+  const rawPublished = item.isPublished ?? item.published ?? item.publicado ?? item.activo ?? item.visible;
+  let isPublished = true;
+  if (typeof rawPublished === 'boolean') {
+    isPublished = rawPublished;
+  } else if (typeof rawPublished === 'string') {
+    const val = rawPublished.trim().toLowerCase();
+    if (['false', 'no', '0', 'inactivo', 'inactive', 'draft', 'borrador', 'oculto', 'hidden', 'pausado', 'paused'].includes(val)) {
+      isPublished = false;
+    }
+  } else if (typeof item.status === 'string') {
+    const statusVal = item.status.trim().toLowerCase();
+    if (['draft', 'borrador', 'inactivo', 'inactive', 'paused', 'pausado', 'oculto', 'hidden', 'archived', 'archivado'].includes(statusVal)) {
+      isPublished = false;
+    }
+  } else if (typeof item.estado === 'string') {
+    const estadoVal = item.estado.trim().toLowerCase();
+    if (['borrador', 'inactivo', 'pausado', 'oculto', 'archivado'].includes(estadoVal)) {
+      isPublished = false;
+    }
+  }
+
   return {
     id,
     code,
@@ -131,6 +153,7 @@ function normalizeProduct(item: any, baseUrl: string): Product {
     specs,
     isOriginal,
     featured,
+    isPublished,
   };
 }
 
@@ -217,7 +240,10 @@ export const ApiService = {
           }
 
           if (Array.isArray(rawList)) {
-            const mappedProducts: Product[] = rawList.map((item) => normalizeProduct(item, baseUrl));
+            // Filter strictly: ONLY published articles with positive stock (> 0) from the other app
+            const mappedProducts: Product[] = rawList
+              .map((item) => normalizeProduct(item, baseUrl))
+              .filter((product) => product.stock > 0 && product.isPublished !== false);
 
             // Persist verified real products in local cache for offline resilience
             try {
@@ -246,7 +272,8 @@ export const ApiService = {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
       if (stored) {
-        cachedRealProducts = JSON.parse(stored);
+        const parsed: Product[] = JSON.parse(stored);
+        cachedRealProducts = parsed.filter((p) => p.stock > 0 && p.isPublished !== false);
       }
     } catch {
       cachedRealProducts = [];

@@ -32,6 +32,7 @@ export interface Product {
   specs?: Record<string, string>;
   isOriginal: boolean;
   featured?: boolean;
+  isPublished?: boolean;
 }
 
 export interface CartItem {

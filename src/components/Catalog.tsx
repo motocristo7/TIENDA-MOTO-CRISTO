@@ -54,6 +54,11 @@ export const Catalog: React.FC = () => {
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => {
+        // Enforce strict requirement: ONLY articles published with positive stock (> 0) in Servimotos Cristo Centro
+        if (p.stock <= 0 || p.isPublished === false) {
+          return false;
+        }
+
         // Brand filter
         if (selectedBrand !== 'Todas' && p.brand !== selectedBrand && p.brand !== 'Multimarca') {
           // Check if brand is in compatible models
@@ -115,7 +120,7 @@ export const Catalog: React.FC = () => {
             Catálogo de Repuestos & Accesorios
           </h2>
           <p className="text-xs sm:text-sm text-neutral-400 mt-1">
-            {filteredProducts.length} productos disponibles con precios duales en $ USD y Bs. Oficiales.
+            {filteredProducts.length} repuestos publicados con stock positivo sincronizados en vivo.
           </p>
         </div>
 
@@ -199,11 +204,11 @@ export const Catalog: React.FC = () => {
           <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
           <div>
             <h3 className="text-base font-bold text-white">
-              {products.length === 0 ? 'Sin repuestos en la base de datos remota' : 'No encontramos repuestos con los filtros aplicados'}
+              {products.length === 0 ? 'Sin repuestos publicados con stock disponible' : 'No encontramos repuestos con los filtros aplicados'}
             </h3>
             <p className="text-xs text-neutral-400 mt-1 max-w-md mx-auto leading-relaxed">
               {products.length === 0
-                ? 'El catálogo está configurado para consumir en vivo la API de tu app en Cloud Run sin datos de prueba inventados.'
+                ? 'Esta tienda muestra exclusivamente los artículos publicados con stock positivo en Servimotos Cristo Centro. Lo que esté pausado o sin stock en la app central no es visible para los clientes.'
                 : 'Prueba cambiando de marca o categoría o borrando el término de búsqueda.'}
             </p>
           </div>
