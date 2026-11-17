@@ -1,9 +1,24 @@
 import React, { useState } from 'react';
-import { Search, Wrench, CheckCircle2, Clock, ShieldCheck, MessageSquare, AlertCircle, Calendar, User, Phone, Tag } from 'lucide-react';
+import {
+  Search,
+  Wrench,
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
+  MessageSquare,
+  AlertCircle,
+  User,
+  Receipt,
+} from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { ApiService } from '../services/api';
-import { WorkshopOrder, WorkshopServiceStatus } from '../types';
-import { formatDualPrice, formatUsd, formatBs, generateWhatsAppConsultLink } from '../utils/formatters';
+import { searchCustomerPortal } from '../services/firebaseStore';
+import { WorkshopOrder, WorkshopServiceStatus, SaleRecord } from '../types';
+import {
+  formatDualPrice,
+  formatUsd,
+  formatBs,
+  generateWhatsAppConsultLink,
+} from '../utils/formatters';
 
 const STATUS_STEPS: Array<{ key: WorkshopServiceStatus; label: string }> = [
   { key: 'recepcion', label: 'Recepción' },
@@ -15,11 +30,14 @@ const STATUS_STEPS: Array<{ key: WorkshopServiceStatus; label: string }> = [
 ];
 
 export const CustomerPortal: React.FC = () => {
-  const { bcvRateInfo, settings } = useStore();
+  const { bcvRateInfo, settings, clientUser } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<WorkshopOrder[] | null>(null);
+  const [serviceOrders, setServiceOrders] = useState<WorkshopOrder[]>([]);
+  const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<'service' | 'sales'>('service');
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const handleSearch = async (queryToUse?: string) => {
     const q = (queryToUse !== undefined ? queryToUse : searchQuery).trim();
@@ -27,19 +45,27 @@ export const CustomerPortal: React.FC = () => {
 
     setIsSearching(true);
     setHasSearched(true);
+    setSearchError(null);
     try {
-      const results = await ApiService.searchWorkshopOrder(q);
-      setSearchResults(results);
-    } catch {
-      setSearchResults([]);
+      const { serviceOrders: orders, sales } = await searchCustomerPortal(q);
+      setServiceOrders(orders);
+      setSalesHistory(sales);
+
+      // Automatically switch to sales tab if there are sales but no service orders
+      if (orders.length === 0 && sales.length > 0) {
+        setActiveTab('sales');
+      } else {
+        setActiveTab('service');
+      }
+    } catch (err: any) {
+      setServiceOrders([]);
+      setSalesHistory([]);
+      setSearchError(
+        err?.message || 'Ocurrió un error al consultar el historial.'
+      );
     } finally {
       setIsSearching(false);
     }
-  };
-
-  const handleQuickLookup = (val: string) => {
-    setSearchQuery(val);
-    handleSearch(val);
   };
 
   const getStepIndex = (status: WorkshopServiceStatus): number => {
@@ -55,19 +81,21 @@ export const CustomerPortal: React.FC = () => {
     return map[status] ?? 0;
   };
 
+  const totalFound = serviceOrders.length + salesHistory.length;
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       {/* Header */}
       <div className="text-center max-w-2xl mx-auto space-y-2">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
           <Wrench className="w-3.5 h-3.5" />
-          <span>Portal Exclusivo de Autoservicio Servimotos Cristo Centro</span>
+          <span>Portal de Autoservicio · {settings.workshopName}</span>
         </div>
         <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          Consulta el Estatus de tu Moto en Taller
+          Consulta tu Moto en Taller y Facturas
         </h2>
         <p className="text-sm text-neutral-300">
-          Ingresa tu número de teléfono celular o la placa de tu moto para conocer en tiempo real la fase de reparación, repuestos montados y presupuesto.
+          Ingresa tu número de teléfono, cédula de identidad o la placa de tu moto para consultar en tiempo real el estado de tu reparación y tu historial de facturas.
         </p>
       </div>
 
@@ -81,54 +109,96 @@ export const CustomerPortal: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Escribe tu placa (ej. AA1B23C) o teléfono (ej. 04122242450)..."
+              placeholder="Teléfono (ej. 0412...), Cédula o Placa de Moto..."
               className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-400 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-neutral-500 focus:outline-none transition-colors"
             />
           </div>
           <button
             onClick={() => handleSearch()}
             disabled={isSearching}
-            className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+            className="px-5 py-3 bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-neutral-950 font-bold text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
           >
             {isSearching ? 'Consultando...' : 'Consultar'}
           </button>
         </div>
 
-        {/* Quick test chips */}
-        <div className="mt-3 pt-2.5 border-t border-neutral-800/80 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-neutral-500 text-[11px]">Pruebas rápidas:</span>
-          <button
-            onClick={() => handleQuickLookup('AA1B23C')}
-            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[11px] cursor-pointer"
-          >
-            Placa: AA1B23C (Empire Horse)
-          </button>
-          <button
-            onClick={() => handleQuickLookup('AC4D77E')}
-            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[11px] cursor-pointer"
-          >
-            Placa: AC4D77E (Bera SBR)
-          </button>
-          <button
-            onClick={() => handleQuickLookup('04122242450')}
-            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[11px] cursor-pointer"
-          >
-            Tlf: 0412-2242450
-          </button>
-        </div>
+        {/* Logged-in client shortcut */}
+        {clientUser && (clientUser.document || clientUser.phone) && (
+          <div className="mt-3 pt-2.5 border-t border-neutral-800/80 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-neutral-500 text-[11px]">Tu cuenta:</span>
+            {clientUser.document && (
+              <button
+                onClick={() => {
+                  setSearchQuery(clientUser.document);
+                  handleSearch(clientUser.document);
+                }}
+                className="px-2.5 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[11px] font-medium cursor-pointer"
+              >
+                Buscar por mi Cédula ({clientUser.document})
+              </button>
+            )}
+            {clientUser.phone && (
+              <button
+                onClick={() => {
+                  setSearchQuery(clientUser.phone);
+                  handleSearch(clientUser.phone);
+                }}
+                className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] cursor-pointer"
+              >
+                Buscar por mi Teléfono ({clientUser.phone})
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Results Tabs */}
+      {hasSearched && totalFound > 0 && (
+        <div className="mt-8 flex items-center justify-center gap-2">
+          <button
+            onClick={() => setActiveTab('service')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'service'
+                ? 'bg-amber-400 text-neutral-950'
+                : 'bg-neutral-900 text-neutral-300 border border-neutral-800 hover:text-white'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Órdenes de Taller ({serviceOrders.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('sales')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'sales'
+                ? 'bg-amber-400 text-neutral-950'
+                : 'bg-neutral-900 text-neutral-300 border border-neutral-800 hover:text-white'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Historial de Facturas ({salesHistory.length})</span>
+          </button>
+        </div>
+      )}
+
       {/* Results Section */}
-      <div className="mt-10 space-y-6">
-        {hasSearched && searchResults && searchResults.length === 0 && (
+      <div className="mt-8 space-y-6">
+        {hasSearched && !isSearching && totalFound === 0 && (
           <div className="text-center py-12 bg-neutral-900/60 rounded-2xl border border-neutral-800 p-6">
             <AlertCircle className="w-10 h-10 text-neutral-500 mx-auto mb-2" />
-            <h3 className="text-base font-bold text-white">No se encontró orden activa con ese dato</h3>
+            <h3 className="text-base font-bold text-white">
+              {searchError
+                ? 'No pudimos consultar la base de datos'
+                : 'No encontramos órdenes ni facturas con ese dato'}
+            </h3>
             <p className="text-xs text-neutral-400 mt-1 max-w-md mx-auto">
-              Verifica haber ingresado los números completos de tu teléfono o las letras y dígitos de la placa de tu moto. Si recién dejaste tu moto en taller, puede tomar unos minutos en registrarse en el sistema central.
+              {searchError
+                ? searchError
+                : 'Verifica haber ingresado correctamente tu teléfono, cédula de identidad o la placa de tu moto.'}
             </p>
             <a
-              href={`https://wa.me/${settings.phoneWhatsapp}?text=Hola%20Servimotos%20Cristo%20Centro,%20quisiera%20consultar%20el%20estatus%20de%20mi%20moto.`}
+              href={`https://wa.me/${settings.phoneWhatsapp}?text=${encodeURIComponent(
+                `Hola ${settings.workshopName}, quisiera consultar el estatus de mi moto o factura (${searchQuery}).`
+              )}`}
               target="_blank"
               rel="noreferrer"
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-xs font-bold rounded-lg transition-colors"
@@ -139,19 +209,24 @@ export const CustomerPortal: React.FC = () => {
           </div>
         )}
 
-        {searchResults &&
-          searchResults.map((order) => {
+        {/* Service Orders List */}
+        {activeTab === 'service' &&
+          serviceOrders.map((order) => {
             const currentStepIdx = getStepIndex(order.status);
             const totalDual = formatDualPrice(order.totalUsd, bcvRateInfo.rateBcv);
             const laborDual = formatDualPrice(order.laborUsd, bcvRateInfo.rateBcv);
-            const whatsappLink = generateWhatsAppConsultLink(order, settings.phoneWhatsapp);
+            const whatsappLink = generateWhatsAppConsultLink(
+              order,
+              settings.phoneWhatsapp,
+              settings.workshopName
+            );
 
             return (
               <div
                 key={order.id}
                 className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 shadow-xl space-y-6"
               >
-                {/* Top Bar: Order & Bike Banner */}
+                {/* Top Bar */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
                   <div>
                     <div className="flex items-center gap-2 text-xs text-neutral-400 font-mono">
@@ -166,8 +241,10 @@ export const CustomerPortal: React.FC = () => {
                       <span className="font-mono bg-neutral-950 px-2 py-0.5 rounded border border-neutral-800">
                         Placa: {order.bikePlate}
                       </span>
-                      <span>Color: {order.bikeColor}</span>
-                      <span>Kilometraje: {order.mileageKm.toLocaleString()} km</span>
+                      <span>Cliente: {order.clientName}</span>
+                      {order.mileageKm > 0 && (
+                        <span>Kilometraje: {order.mileageKm.toLocaleString()} km</span>
+                      )}
                     </div>
                   </div>
 
@@ -229,9 +306,13 @@ export const CustomerPortal: React.FC = () => {
                       <User className="w-4 h-4 text-amber-400" />
                       <span>Mecánico Asignado:</span>
                     </div>
-                    <p className="text-sm font-semibold text-white">{order.mechanicInCharge}</p>
+                    <p className="text-sm font-semibold text-white">
+                      {order.mechanicInCharge}
+                    </p>
                     <p className="text-xs text-neutral-400 mt-2">
-                      <span className="text-neutral-500 font-medium">Motivo de ingreso:</span>{' '}
+                      <span className="text-neutral-500 font-medium">
+                        Motivo / Observación:
+                      </span>{' '}
                       {order.issueReported}
                     </p>
                   </div>
@@ -239,7 +320,7 @@ export const CustomerPortal: React.FC = () => {
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-xs font-bold text-neutral-300 mb-2">
                       <ShieldCheck className="w-4 h-4 text-amber-400" />
-                      <span>Trabajos Realizados:</span>
+                      <span>Trabajos / Diagnóstico:</span>
                     </div>
                     <ul className="text-xs text-neutral-300 space-y-1 list-disc list-inside">
                       {order.workDone.map((w, i) => (
@@ -254,40 +335,56 @@ export const CustomerPortal: React.FC = () => {
                 {/* Parts Used & Budget Breakdown */}
                 <div className="bg-neutral-950 p-5 rounded-xl border border-neutral-800 space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-neutral-800 text-xs font-semibold text-neutral-400 uppercase">
-                    <span>Repuestos Instalados</span>
+                    <span>Detalle de Repuestos y Mano de Obra</span>
                     <span>Subtotal ($ USD / Bs.)</span>
                   </div>
 
                   <div className="divide-y divide-neutral-900 text-xs">
                     {order.partsUsed.map((part, i) => {
-                      const partPrice = formatDualPrice(part.priceUsd * part.quantity, bcvRateInfo.rateBcv);
+                      const partPrice = formatDualPrice(
+                        part.priceUsd * part.quantity,
+                        bcvRateInfo.rateBcv
+                      );
                       return (
-                        <div key={i} className="py-2 flex items-center justify-between text-neutral-300">
+                        <div
+                          key={i}
+                          className="py-2 flex items-center justify-between text-neutral-300"
+                        >
                           <div>
                             <span className="font-medium text-white">{part.name}</span>
-                            <span className="text-neutral-500 text-[11px] ml-2">x{part.quantity}</span>
+                            <span className="text-neutral-500 text-[11px] ml-2">
+                              x{part.quantity}
+                            </span>
                           </div>
                           <div className="text-right font-mono">
                             <span className="text-white font-bold">{partPrice.usd}</span>
-                            <span className="text-neutral-500 text-[10px] ml-1.5">{partPrice.bs}</span>
+                            <span className="text-neutral-500 text-[10px] ml-1.5">
+                              {partPrice.bs}
+                            </span>
                           </div>
                         </div>
                       );
                     })}
 
-                    <div className="py-2 flex items-center justify-between text-neutral-300">
-                      <span>Mano de obra técnica especializada</span>
-                      <div className="text-right font-mono">
-                        <span className="text-white font-bold">{laborDual.usd}</span>
-                        <span className="text-neutral-500 text-[10px] ml-1.5">{laborDual.bs}</span>
+                    {order.laborUsd > 0 && (
+                      <div className="py-2 flex items-center justify-between text-neutral-300">
+                        <span>Mano de obra técnica especializada</span>
+                        <div className="text-right font-mono">
+                          <span className="text-white font-bold">{laborDual.usd}</span>
+                          <span className="text-neutral-500 text-[10px] ml-1.5">
+                            {laborDual.bs}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Total Box */}
                   <div className="pt-3 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <span className="text-xs text-neutral-400 block">Total a Cancelar (Repuestos + Mano de Obra):</span>
+                      <span className="text-xs text-neutral-400 block">
+                        Total Estimado / Facturado:
+                      </span>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <span className="text-2xl font-mono tabular-nums font-extrabold text-amber-400">
                           {totalDual.usd}
@@ -312,13 +409,86 @@ export const CustomerPortal: React.FC = () => {
                     </a>
                   </div>
                 </div>
+              </div>
+            );
+          })}
 
-                {order.notes && (
-                  <div className="p-3 bg-neutral-950/60 rounded-lg border border-neutral-850 text-xs text-neutral-400">
-                    <span className="font-semibold text-neutral-300">Observaciones del taller:</span>{' '}
-                    {order.notes}
+        {/* Sales Invoices History */}
+        {activeTab === 'sales' &&
+          salesHistory.map((sale) => {
+            const totalBsDisplay =
+              sale.totalBs > 0
+                ? formatBs(sale.totalBs)
+                : formatBs(sale.totalUsd * bcvRateInfo.rateBcv);
+
+            return (
+              <div
+                key={sale.id}
+                className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-800">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-mono text-amber-400">
+                      <Receipt className="w-4 h-4" />
+                      <span>FACTURA #{sale.invoiceNumber}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-neutral-400">{sale.date}</span>
+                    </div>
+                    <h4 className="text-base font-bold text-white mt-1">
+                      {sale.customerName}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400 mt-0.5">
+                      {sale.customerDocument && <span>Cédula/RIF: {sale.customerDocument}</span>}
+                      {sale.customerPhone && <span>Tlf: {sale.customerPhone}</span>}
+                      {sale.motorcyclePlate && (
+                        <span className="font-mono text-neutral-300">
+                          Moto: {sale.motorcycleInfo ? `${sale.motorcycleInfo} · ` : ''}
+                          Placa {sale.motorcyclePlate}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
+
+                  <div className="sm:text-right">
+                    <span className="inline-block px-2.5 py-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                      {sale.status}
+                    </span>
+                    <span className="text-[11px] text-neutral-400 block mt-1">
+                      Pago: {sale.paymentMethod}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 divide-y divide-neutral-900 text-xs">
+                  {sale.items.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="py-2 flex items-center justify-between gap-2 text-neutral-300"
+                    >
+                      <div>
+                        <span className="font-medium text-white">{item.name}</span>
+                        <span className="text-neutral-500 ml-2">x{item.quantity}</span>
+                      </div>
+                      <span className="font-mono font-bold text-white">
+                        {formatUsd(item.totalUsd)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-neutral-400">Total Facturado:</span>
+                  <div className="text-right">
+                    <span className="text-lg font-mono font-extrabold text-amber-400">
+                      {formatUsd(sale.totalUsd)}
+                    </span>
+                    <span className="text-xs font-mono text-neutral-400 ml-2">
+                      ({totalBsDisplay})
+                    </span>
+                  </div>
+                </div>
               </div>
             );
           })}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, ShieldCheck, ShoppingBag, Truck, AlertCircle } from 'lucide-react';
+import { X, Check, ShieldCheck, ShoppingBag, Truck } from 'lucide-react';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
 import { formatDualPrice } from '../utils/formatters';
@@ -10,7 +10,7 @@ interface ProductDetailModalProps {
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product, onClose }) => {
-  const { bcvRateInfo, addToCart } = useStore();
+  const { bcvRateInfo, addToCart, settings } = useStore();
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -43,12 +43,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               loading="lazy"
               referrerPolicy="no-referrer"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 24 24" fill="none" stroke="%23f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+                (e.currentTarget as HTMLImageElement).src = `data:image/svg+xml;utf8,${encodeURIComponent(
+                  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>'
+                )}`;
               }}
             />
-            {product.isOriginal && (
+            {product.featured && (
               <span className="absolute top-4 left-4 text-[11px] font-semibold tracking-wider text-amber-400 uppercase bg-neutral-900/90 border border-amber-500/30 px-2 py-0.5 rounded">
-                Repuesto Original
+                Destacado
               </span>
             )}
           </div>
@@ -57,12 +59,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
           <div className="p-6 flex flex-col justify-between">
             <div>
               {/* Unboxed Metadata */}
-              <div className="flex items-center gap-2 text-xs text-neutral-400 font-medium">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 font-medium">
                 <span>{product.brand}</span>
                 <span aria-hidden="true">·</span>
                 <span>{product.category}</span>
                 <span aria-hidden="true">·</span>
-                <span className="font-mono">{product.code}</span>
+                <span className="font-mono">SKU: {product.sku || product.code}</span>
               </div>
 
               <h2 className="mt-2 text-xl font-bold text-white text-balance leading-snug">
@@ -90,7 +92,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               {/* Compatibility */}
               <div className="mt-4">
                 <span className="text-xs font-semibold text-neutral-300 block mb-1">
-                  Modelos de motos compatibles:
+                  Compatibilidad:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {product.compatibleModels.map((model, idx) => (
@@ -105,9 +107,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               </div>
 
               {/* Description */}
-              <p className="mt-4 text-xs text-neutral-400 leading-relaxed">
-                {product.description}
-              </p>
+              {product.description && (
+                <p className="mt-4 text-xs text-neutral-400 leading-relaxed">
+                  {product.description}
+                </p>
+              )}
+
+              {product.barcode && (
+                <p className="mt-2 text-[11px] font-mono text-neutral-500">
+                  Cód. Barras: {product.barcode}
+                </p>
+              )}
 
               {/* Technical Specs */}
               {product.specs && Object.keys(product.specs).length > 0 && (
@@ -181,11 +191,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
               <div className="mt-3 flex items-center justify-between text-[11px] text-neutral-400">
                 <span className="flex items-center gap-1">
                   <Truck className="w-3.5 h-3.5 text-amber-500" />
-                  MRW / Zoom / Tealca / Taller
+                  Delivery Mérida / MRW / Zoom / Tealca
                 </span>
                 <span className="flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                  Garantía Servimotos CC
+                  {settings.workshopName}
                 </span>
               </div>
             </div>

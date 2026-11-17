@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Phone, MessageSquare, Clock, ShieldCheck } from 'lucide-react';
+import { MapPin, MessageSquare, Clock, Phone } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 export const Footer: React.FC = () => {
@@ -16,15 +16,15 @@ export const Footer: React.FC = () => {
                 CC
               </div>
               <span className="text-base font-bold text-white tracking-tight">
-                Mercado Moto CC
+                {settings.storeName}
               </span>
             </div>
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Tienda online de repuestos y portal de autoservicio para clientes de Servimotos Cristo Centro C.A.
+              Tienda online de repuestos y portal de autoservicio para clientes de {settings.workshopName}.
             </p>
             <div className="text-[11px] text-neutral-500 space-y-0.5 font-mono">
               <p>RIF: {settings.rif}</p>
-              <p>Caracas · Venezuela</p>
+              <p>Venezuela</p>
             </div>
           </div>
 
@@ -47,7 +47,7 @@ export const Footer: React.FC = () => {
                   onClick={() => setActiveView('workshop')}
                   className="hover:text-amber-400 transition-colors cursor-pointer"
                 >
-                  Consultar Moto en Taller
+                  Mi Moto en Taller & Facturas
                 </button>
               </li>
               <li>
@@ -55,7 +55,7 @@ export const Footer: React.FC = () => {
                   onClick={() => setActiveView('shipping-payment')}
                   className="hover:text-amber-400 transition-colors cursor-pointer"
                 >
-                  Envíos Nacionales & Pagos
+                  Envíos, Delivery & Pagos
                 </button>
               </li>
             </ul>
@@ -71,7 +71,7 @@ export const Footer: React.FC = () => {
                 <button
                   key={brand}
                   onClick={() => {
-                    setSelectedBrand(brand as any);
+                    setSelectedBrand(brand);
                     setActiveView('catalog');
                   }}
                   className="px-2 py-1 rounded bg-neutral-900 hover:bg-neutral-850 hover:text-white transition-colors cursor-pointer"
@@ -96,6 +96,10 @@ export const Footer: React.FC = () => {
                 <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span>{settings.operatingHours}</span>
               </div>
+              <div className="flex items-center gap-2 text-neutral-300">
+                <Phone className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="font-mono">{settings.phoneCall}</span>
+              </div>
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <a
@@ -104,7 +108,7 @@ export const Footer: React.FC = () => {
                   rel="noreferrer"
                   className="text-emerald-400 hover:underline font-mono"
                 >
-                  WhatsApp: +58 412 2242450
+                  WhatsApp: +{settings.phoneWhatsapp}
                 </a>
               </div>
             </div>
@@ -113,11 +117,11 @@ export const Footer: React.FC = () => {
 
         {/* Bottom Bar */}
         <div className="mt-10 pt-6 border-t border-neutral-850 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-neutral-500">
-          <p>© {new Date().getFullYear()} Mercado Moto CC · Servimotos Cristo Centro C.A. Todos los derechos reservados.</p>
+          <p>© {new Date().getFullYear()} {settings.storeName} · {settings.workshopName}. Todos los derechos reservados.</p>
           <div className="flex items-center gap-4">
-            <span>Tasa Oficial BCV en vivo</span>
-            <span>Envíos MRW / Zoom / Tealca</span>
-            <span>Pago Móvil Banesco</span>
+            <span>Tasa BCV en vivo</span>
+            <span>Delivery Mérida / MRW / Zoom / Tealca</span>
+            <span>Pago Móvil / Binance Pay</span>
           </div>
         </div>
       </div>

@@ -1,21 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { ShoppingBag, Eye, Check, Search, Filter, RefreshCw, AlertCircle } from 'lucide-react';
+import { ShoppingBag, Eye, Check, Filter, RefreshCw, AlertCircle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Product, ProductCategory, MotoBrand } from '../types';
 import { formatDualPrice } from '../utils/formatters';
 import { ProductDetailModal } from './ProductDetailModal';
 
-const CATEGORIES: ProductCategory[] = [
-  'Todas',
-  'Motor y Transmisión',
-  'Frenos y Suspensión',
-  'Eléctrico e Iluminación',
-  'Cauchos y Rines',
-  'Lubricantes y Fluidos',
-  'Accesorios y Cascos',
-];
-
-const BRANDS: MotoBrand[] = [
+const DEFAULT_BRANDS: MotoBrand[] = [
   'Todas',
   'Empire Keeway',
   'Bera',
@@ -27,12 +17,13 @@ const BRANDS: MotoBrand[] = [
   'Multimarca',
 ];
 
-type SortOption = 'relevance' | 'price-low' | 'price-high' | 'name-asc';
+type SortOption = 'name-asc' | 'featured' | 'price-low' | 'price-high';
 
 export const Catalog: React.FC = () => {
   const {
     products,
     isLoading,
+    firestoreError,
     bcvRateInfo,
     addToCart,
     selectedBrand,
@@ -43,45 +34,79 @@ export const Catalog: React.FC = () => {
     setSearchQuery,
     selectedProduct,
     setSelectedProduct,
-    syncInfo,
-    triggerSync,
+    settings,
   } = useStore();
 
-  const [sortOption, setSortOption] = useState<SortOption>('relevance');
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc');
   const [addedItemIds, setAddedItemIds] = useState<Record<string, boolean>>({});
 
-  // Filter and sort products
+  // Derive categories dynamically from live Firestore inventory
+  const availableCategories = useMemo<ProductCategory[]>(() => {
+    const set = new Set<string>(['Todas']);
+    products.forEach((p) => {
+      if (p.category && p.category.trim()) {
+        set.add(p.category.trim());
+      }
+    });
+    return Array.from(set);
+  }, [products]);
+
+  // Merge Venezuelan moto brands with any additional brands found in Firestore
+  const availableBrands = useMemo<MotoBrand[]>(() => {
+    const set = new Set<string>(DEFAULT_BRANDS);
+    products.forEach((p) => {
+      if (p.brand && p.brand.trim()) {
+        set.add(p.brand.trim());
+      }
+    });
+    return Array.from(set);
+  }, [products]);
+
+  // Filter and sort products (stock > 0 enforced, alphabetical A-Z default)
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => {
-        // Enforce strict requirement: ONLY articles published with positive stock (> 0) in Servimotos Cristo Centro
         if (p.stock <= 0 || p.isPublished === false) {
           return false;
         }
 
-        // Brand filter
-        if (selectedBrand !== 'Todas' && p.brand !== selectedBrand && p.brand !== 'Multimarca') {
-          // Check if brand is in compatible models
-          const matchesCompatible = p.compatibleModels.some((m) =>
-            m.toLowerCase().includes(selectedBrand.toLowerCase())
-          );
-          if (!matchesCompatible) return false;
+        // Brand filter (matches brand, Multimarca, or compatibility)
+        if (selectedBrand !== 'Todas') {
+          const targetBrand = selectedBrand.toLowerCase();
+          const prodBrand = p.brand.toLowerCase();
+          const matchesBrand =
+            prodBrand === targetBrand ||
+            prodBrand.includes(targetBrand) ||
+            prodBrand === 'multimarca' ||
+            prodBrand === 'universal';
+          const matchesCompat =
+            p.compatibility.toLowerCase().includes(targetBrand) ||
+            p.compatibleModels.some((m) => m.toLowerCase().includes(targetBrand));
+
+          if (!matchesBrand && !matchesCompat) {
+            return false;
+          }
         }
 
         // Category filter
-        if (selectedCategory !== 'Todas' && p.category !== selectedCategory) {
-          return false;
+        if (selectedCategory !== 'Todas') {
+          if (p.category.toLowerCase() !== selectedCategory.toLowerCase()) {
+            return false;
+          }
         }
 
-        // Search query
+        // Search query (name, sku, barcode, brand, compatibility, description)
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
           const matchName = p.name.toLowerCase().includes(q);
-          const matchCode = p.code.toLowerCase().includes(q);
+          const matchSku = (p.sku || p.code).toLowerCase().includes(q);
+          const matchBarcode = (p.barcode || '').toLowerCase().includes(q);
           const matchBrand = p.brand.toLowerCase().includes(q);
           const matchDesc = p.description.toLowerCase().includes(q);
-          const matchCompat = p.compatibleModels.some((m) => m.toLowerCase().includes(q));
-          if (!matchName && !matchCode && !matchBrand && !matchDesc && !matchCompat) {
+          const matchCompat =
+            p.compatibility.toLowerCase().includes(q) ||
+            p.compatibleModels.some((m) => m.toLowerCase().includes(q));
+          if (!matchName && !matchSku && !matchBarcode && !matchBrand && !matchDesc && !matchCompat) {
             return false;
           }
         }
@@ -91,9 +116,11 @@ export const Catalog: React.FC = () => {
       .sort((a, b) => {
         if (sortOption === 'price-low') return a.priceUsd - b.priceUsd;
         if (sortOption === 'price-high') return b.priceUsd - a.priceUsd;
-        if (sortOption === 'name-asc') return a.name.localeCompare(b.name);
-        // Default relevance: featured first
-        return (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
+        if (sortOption === 'featured') {
+          const featDiff = (b.featured ? 1 : 0) - (a.featured ? 1 : 0);
+          if (featDiff !== 0) return featDiff;
+        }
+        return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
       });
   }, [products, selectedBrand, selectedCategory, searchQuery, sortOption]);
 
@@ -112,62 +139,52 @@ export const Catalog: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
           <div className="flex items-center gap-2 text-xs text-amber-500 font-semibold uppercase tracking-wider">
-            <span>Inventario Oficial</span>
+            <span>Inventario en Tiempo Real</span>
             <span aria-hidden="true">·</span>
-            <span>Servimotos Cristo Centro</span>
+            <span>{settings.workshopName}</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
             Catálogo de Repuestos & Accesorios
           </h2>
           <p className="text-xs sm:text-sm text-neutral-400 mt-1">
-            {filteredProducts.length} repuestos publicados con stock positivo sincronizados en vivo.
+            {filteredProducts.length} repuestos disponibles en stock listos para entrega o envío nacional.
           </p>
         </div>
 
-        {/* Sync Status & Sort */}
-        <div className="flex items-center gap-3 self-start md:self-auto">
-          <button
-            onClick={() => triggerSync()}
-            disabled={syncInfo.isSyncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-850 text-xs text-neutral-300 transition-colors cursor-pointer"
-            title="Sincronizar inventario con el sistema central"
+        {/* Sort selector */}
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <span className="text-xs text-neutral-400 whitespace-nowrap">Ordenar:</span>
+          <select
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value as SortOption)}
+            className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${syncInfo.isSyncing ? 'animate-spin' : ''}`} />
-            <span>Sincronizar</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400 whitespace-nowrap">Ordenar:</span>
-            <select
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value as SortOption)}
-              className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
-            >
-              <option value="relevance">Destacados</option>
-              <option value="price-low">Precio: Menor a Mayor</option>
-              <option value="price-high">Precio: Mayor a Menor</option>
-              <option value="name-asc">Nombre (A - Z)</option>
-            </select>
-          </div>
+            <option value="name-asc">Alfabético (A - Z)</option>
+            <option value="featured">Destacados primero</option>
+            <option value="price-low">Precio: Menor a Mayor</option>
+            <option value="price-high">Precio: Mayor a Menor</option>
+          </select>
         </div>
       </div>
 
       {/* Category Tabs */}
-      <div className="mt-6 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
-              selectedCategory === cat
-                ? 'bg-amber-400 text-neutral-950 font-bold shadow-sm'
-                : 'bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-850 border border-neutral-800'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      {availableCategories.length > 1 && (
+        <div className="mt-6 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {availableCategories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+                selectedCategory === cat
+                  ? 'bg-amber-400 text-neutral-950 font-bold shadow-sm'
+                  : 'bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-850 border border-neutral-800'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Brand Filter Bar */}
       <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-2 text-xs">
@@ -175,7 +192,7 @@ export const Catalog: React.FC = () => {
           <Filter className="w-3.5 h-3.5" />
           Marca:
         </span>
-        {BRANDS.map((brand) => (
+        {availableBrands.map((brand) => (
           <button
             key={brand}
             onClick={() => setSelectedBrand(brand)}
@@ -194,66 +211,50 @@ export const Catalog: React.FC = () => {
       {isLoading ? (
         <div className="mt-12 text-center py-20 bg-neutral-900/40 rounded-2xl border border-neutral-850">
           <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-neutral-300 font-medium">Consultando API de Cloud Run en tiempo real...</p>
-          <span className="text-[11px] text-neutral-500 font-mono mt-1 block truncate max-w-md mx-auto">
-            {syncInfo.endpoint}
-          </span>
+          <p className="text-sm text-neutral-300 font-medium">
+            Cargando catálogo en tiempo real desde {settings.workshopName}...
+          </p>
         </div>
       ) : filteredProducts.length === 0 ? (
-        <div className="mt-12 text-center py-16 bg-neutral-900/50 rounded-2xl border border-neutral-850 px-6 max-w-2xl mx-auto space-y-4">
+        <div className="mt-12 text-center py-16 bg-neutral-900/50 rounded-2xl border border-neutral-800 px-6 max-w-xl mx-auto space-y-4">
           <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
-          <div>
-            <h3 className="text-base font-bold text-white">
-              {products.length === 0 ? 'Sin repuestos publicados con stock disponible' : 'No encontramos repuestos con los filtros aplicados'}
-            </h3>
-            <p className="text-xs text-neutral-400 mt-1 max-w-md mx-auto leading-relaxed">
-              {products.length === 0
-                ? 'Esta tienda muestra exclusivamente los artículos publicados con stock positivo en Servimotos Cristo Centro. Lo que esté pausado o sin stock en la app central no es visible para los clientes.'
-                : 'Prueba cambiando de marca o categoría o borrando el término de búsqueda.'}
-            </p>
-          </div>
-
-          {/* Real API Status Diagnostic Box */}
-          <div className="p-3.5 bg-neutral-950 rounded-xl border border-neutral-800 text-left text-xs space-y-1.5 font-mono">
-            <div className="flex items-center justify-between text-neutral-400">
-              <span>Endpoint principal:</span>
-              <span className="text-amber-400 truncate max-w-[280px]">{syncInfo.endpoint}</span>
+          {products.length === 0 ? (
+            <div>
+              <h3 className="text-base font-bold text-white">
+                {firestoreError
+                  ? 'No se pudo conectar con el inventario en este momento'
+                  : 'Actualmente no hay repuestos con stock disponible'}
+              </h3>
+              <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
+                {firestoreError
+                  ? 'Verifica tu conexión a internet o consulta directamente por nuestro WhatsApp oficial.'
+                  : 'Tan pronto ingresen repuestos al inventario con stock positivo, aparecerán aquí automáticamente.'}
+              </p>
             </div>
-            <div className="flex items-center justify-between text-neutral-400">
-              <span>Estado de conexión:</span>
-              <span className={syncInfo.isRemote ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
-                {syncInfo.isRemote ? '200 OK (En Línea)' : (syncInfo.error || 'Esperando respuesta')}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-neutral-500 text-[11px]">
-              <span>Última comprobación:</span>
-              <span>{syncInfo.lastSyncTime}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => triggerSync()}
-              disabled={syncInfo.isSyncing}
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncInfo.isSyncing ? 'animate-spin' : ''}`} />
-              <span>Reintentar Conexión API</span>
-            </button>
-
-            {(selectedBrand !== 'Todas' || selectedCategory !== 'Todas' || searchQuery) && (
-              <button
-                onClick={() => {
-                  setSelectedBrand('Todas');
-                  setSelectedCategory('Todas');
-                  setSearchQuery('');
-                }}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white rounded-lg transition-colors cursor-pointer"
-              >
-                Limpiar filtros
-              </button>
-            )}
-          </div>
+          ) : (
+            <>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  No encontramos repuestos que coincidan con los filtros
+                </h3>
+                <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
+                  Prueba seleccionando "Todas" en marcas y categorías o limpiando el texto del buscador.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                <button
+                  onClick={() => {
+                    setSelectedBrand('Todas');
+                    setSelectedCategory('Todas');
+                    setSearchQuery('');
+                  }}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  Ver todos los repuestos disponibles
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -276,16 +277,18 @@ export const Catalog: React.FC = () => {
                     loading="lazy"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 24 24" fill="none" stroke="%23f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+                      (e.currentTarget as HTMLImageElement).src = `data:image/svg+xml;utf8,${encodeURIComponent(
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>'
+                      )}`;
                     }}
                   />
-                  {product.isOriginal && (
+                  {product.featured && (
                     <span className="absolute top-2.5 left-2.5 text-[10px] font-bold tracking-wider text-amber-400 uppercase bg-neutral-900/90 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                      Original
+                      Destacado
                     </span>
                   )}
                   <span className="absolute bottom-2.5 right-2.5 text-[10px] font-mono text-neutral-400 bg-neutral-900/90 px-1.5 py-0.5 rounded border border-neutral-800">
-                    {product.code}
+                    {product.sku || product.code}
                   </span>
                 </div>
 
@@ -304,11 +307,10 @@ export const Catalog: React.FC = () => {
                       {product.name}
                     </h3>
 
-                    {/* Compatible Models Snippet */}
+                    {/* Compatibility Snippet */}
                     <p className="mt-1.5 text-[11px] text-neutral-400 line-clamp-1">
                       <span className="text-neutral-500 font-medium">Aplica a:</span>{' '}
-                      {product.compatibleModels.slice(0, 2).join(', ')}
-                      {product.compatibleModels.length > 2 ? '...' : ''}
+                      {product.compatibility || product.compatibleModels.join(', ')}
                     </p>
                   </div>
 
@@ -322,6 +324,9 @@ export const Catalog: React.FC = () => {
                       </div>
                       <span className="text-[11px] font-mono tabular-nums text-neutral-300 block">
                         {price.bs}
+                      </span>
+                      <span className="text-[10px] text-emerald-400/90 block mt-0.5">
+                        Disp: {product.stock} und.
                       </span>
                     </div>
 

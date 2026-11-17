@@ -1,33 +1,21 @@
-export type MotoBrand = 
-  | 'Todas'
-  | 'Empire Keeway'
-  | 'Bera'
-  | 'Motos Toro'
-  | 'Suzuki'
-  | 'Yamaha'
-  | 'MD Haojin'
-  | 'Ava'
-  | 'Multimarca';
+export type MotoBrand = string;
 
-export type ProductCategory = 
-  | 'Todas'
-  | 'Motor y Transmisión'
-  | 'Frenos y Suspensión'
-  | 'Eléctrico e Iluminación'
-  | 'Cauchos y Rines'
-  | 'Lubricantes y Fluidos'
-  | 'Accesorios y Cascos';
+export type ProductCategory = string;
 
 export interface Product {
   id: string;
+  sku: string;
   code: string;
   name: string;
   brand: MotoBrand;
   category: ProductCategory;
+  compatibility: string;
   compatibleModels: string[];
+  salePrice: number;
   priceUsd: number;
   stock: number;
   imageUrl: string;
+  barcode?: string;
   description: string;
   specs?: Record<string, string>;
   isOriginal: boolean;
@@ -40,28 +28,80 @@ export interface CartItem {
   quantity: number;
 }
 
-export type ShippingAgency = 'MRW' | 'Zoom' | 'Tealca' | 'Retiro en Taller (Cristo Centro)';
+export type ShippingAgency =
+  | 'Retiro en tienda'
+  | 'Delivery Mérida'
+  | 'MRW'
+  | 'Zoom'
+  | 'Tealca';
 
-export type PaymentMethodType = 'pago_movil' | 'divisas' | 'binance';
+export type PaymentMethodType =
+  | 'pago_movil'
+  | 'transferencia'
+  | 'binance'
+  | 'divisas';
 
 export interface CustomerData {
   fullName: string;
   phone: string;
   idNumber: string; // Cédula o RIF
+  email?: string;
   cityState: string;
   shippingAgency: ShippingAgency;
   agencyOfficeAddress: string;
   paymentMethod: PaymentMethodType;
+  paymentReference?: string;
   notes?: string;
 }
 
-export type WorkshopServiceStatus = 
-  | 'recepcion' 
-  | 'diagnostico' 
-  | 'espera_repuestos' 
-  | 'en_reparacion' 
-  | 'control_calidad' 
-  | 'lista_entrega' 
+export interface BankDetails {
+  pagoMovil: {
+    bank: string;
+    phone: string;
+    idNumber: string;
+    accountHolder?: string;
+  };
+  transferencia: {
+    bank: string;
+    accountNumber: string;
+    accountType?: string;
+    idNumber: string;
+    accountHolder: string;
+  };
+  binance: {
+    payId: string;
+    email?: string;
+    holder?: string;
+  };
+}
+
+export interface StoreSettings {
+  storeName: string;
+  workshopName: string;
+  rif: string;
+  phoneWhatsapp: string;
+  phoneCall: string;
+  address: string;
+  operatingHours: string;
+  bcvRate?: number;
+  bankDetails: BankDetails;
+  // Backward compatibility alias
+  pagoMovil: {
+    bank: string;
+    phone: string;
+    idNumber: string;
+    accountHolder: string;
+  };
+  binancePayId: string;
+}
+
+export type WorkshopServiceStatus =
+  | 'recepcion'
+  | 'diagnostico'
+  | 'espera_repuestos'
+  | 'en_reparacion'
+  | 'control_calidad'
+  | 'lista_entrega'
   | 'entregada';
 
 export interface WorkshopOrder {
@@ -71,7 +111,7 @@ export interface WorkshopOrder {
   clientPhone: string;
   clientIdNumber: string;
   bikeModel: string;
-  bikeBrand: MotoBrand;
+  bikeBrand: string;
   bikePlate: string;
   bikeColor: string;
   entryDate: string;
@@ -92,26 +132,74 @@ export interface WorkshopOrder {
   mileageKm: number;
 }
 
+export interface SaleRecord {
+  id: string;
+  invoiceNumber: string;
+  date: string;
+  customerName: string;
+  customerPhone: string;
+  customerDocument: string;
+  motorcyclePlate?: string;
+  motorcycleInfo?: string;
+  items: Array<{
+    name: string;
+    sku?: string;
+    quantity: number;
+    unitPriceUsd: number;
+    totalUsd: number;
+  }>;
+  totalUsd: number;
+  totalBs: number;
+  bcvRateUsed?: number;
+  paymentMethod: string;
+  status: string;
+}
+
+export interface OnlineOrder {
+  id: string;
+  orderNumber: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  customerDocument: string;
+  customerEmail?: string;
+  cityState: string;
+  shippingMethod: ShippingAgency;
+  shippingAddress: string;
+  paymentMethod: PaymentMethodType;
+  paymentReference?: string;
+  notes?: string;
+  items: Array<{
+    productId: string;
+    sku: string;
+    name: string;
+    brand: string;
+    quantity: number;
+    unitPriceUsd: number;
+    subtotalUsd: number;
+    imageUrl: string;
+  }>;
+  totalUsd: number;
+  totalBs: number;
+  bcvRate: number;
+  status: string;
+  source: string;
+  createdAt: string;
+}
+
+export interface ClientUser {
+  id: string;
+  name: string;
+  document: string;
+  phone: string;
+  email: string;
+  role: 'CLIENTE';
+  createdAt?: string;
+}
+
 export interface ExchangeRateInfo {
-  rateBcv: number; // e.g. 52.40
+  rateBcv: number;
   lastUpdated: string;
   source: string;
   isCustom?: boolean;
-}
-
-export interface StoreSettings {
-  storeName: string;
-  workshopName: string;
-  rif: string;
-  phoneWhatsapp: string;
-  phoneCall: string;
-  address: string;
-  operatingHours: string;
-  pagoMovil: {
-    bank: string;
-    phone: string;
-    idNumber: string;
-    accountHolder: string;
-  };
-  binancePayId: string;
 }

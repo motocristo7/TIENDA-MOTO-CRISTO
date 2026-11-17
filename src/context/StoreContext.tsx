@@ -1,13 +1,27 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Product, CartItem, MotoBrand, ProductCategory, ExchangeRateInfo, StoreSettings } from '../types';
-import { ApiService, DEFAULT_STORE_SETTINGS } from '../services/api';
+import {
+  Product,
+  CartItem,
+  MotoBrand,
+  ProductCategory,
+  ExchangeRateInfo,
+  StoreSettings,
+  ClientUser,
+} from '../types';
+import { ApiService } from '../services/api';
+import {
+  DEFAULT_STORE_SETTINGS,
+  subscribeToProducts,
+  subscribeToBusinessSettings,
+  logoutClientUser,
+} from '../services/firebaseStore';
 
 interface StoreContextType {
   products: Product[];
   isLoading: boolean;
+  firestoreError: string | null;
   bcvRateInfo: ExchangeRateInfo;
   refreshBcvRate: () => Promise<void>;
-  updateBcvRateManual: (rate: number) => void;
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number) => void;
   removeFromCart: (productId: string) => void;
@@ -29,16 +43,11 @@ interface StoreContextType {
   activeView: 'catalog' | 'workshop' | 'shipping-payment';
   setActiveView: (view: 'catalog' | 'workshop' | 'shipping-payment') => void;
   settings: StoreSettings;
-  syncInfo: {
-    lastSyncTime: string;
-    isSyncing: boolean;
-    isRemote: boolean;
-    endpoint: string;
-    error?: string;
-  };
-  triggerSync: () => Promise<void>;
-  customApiUrl: string;
-  setCustomApiUrl: (url: string) => void;
+  clientUser: ClientUser | null;
+  setClientUser: (user: ClientUser | null) => void;
+  signOutClient: () => Promise<void>;
+  isAuthModalOpen: boolean;
+  setIsAuthModalOpen: (open: boolean) => void;
   toastMessage: string | null;
   showToast: (msg: string) => void;
 }
@@ -46,18 +55,21 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const CART_STORAGE_KEY = 'mercadomoto_cart_items';
+const CLIENT_USER_KEY = 'mercadomoto_client_user';
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
+
   const [bcvRateInfo, setBcvRateInfo] = useState<ExchangeRateInfo>({
     rateBcv: 52.85,
     lastUpdated: new Date().toISOString(),
-    source: 'Oficial BCV',
+    source: 'Tasa Oficial BCV',
     isCustom: false,
   });
 
-  // Cart state persisted to localStorage
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
@@ -67,108 +79,130 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   });
 
+  const [clientUser, setClientUserState] = useState<ClientUser | null>(() => {
+    try {
+      const saved = localStorage.getItem(CLIENT_USER_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [selectedBrand, setSelectedBrand] = useState<MotoBrand>('Todas');
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('Todas');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [activeView, setActiveView] = useState<'catalog' | 'workshop' | 'shipping-payment'>('catalog');
-  const [settings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
-
-  const [customApiUrl, setCustomApiUrlState] = useState<string>(() => ApiService.getBaseUrl());
-  const [syncInfo, setSyncInfo] = useState({
-    lastSyncTime: 'Iniciando...',
-    isSyncing: true,
-    isRemote: false,
-    endpoint: ApiService.getBaseUrl(),
-    error: undefined as string | undefined,
-  });
-
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
-    }, 3200);
+    }, 3400);
   }, []);
 
-  const setCustomApiUrl = useCallback((url: string) => {
-    ApiService.setBaseUrl(url);
-    const updated = ApiService.getBaseUrl();
-    setCustomApiUrlState(updated);
-    showToast(`URL de API actualizada: ${updated}`);
-  }, [showToast]);
-
-  // Sync products and rate directly from real API
-  const triggerSync = useCallback(async () => {
-    setSyncInfo((prev) => ({ ...prev, isSyncing: true }));
+  const setClientUser = useCallback((user: ClientUser | null) => {
+    setClientUserState(user);
     try {
-      const [rateRes, prodRes] = await Promise.all([
-        ApiService.getBcvRate(),
-        ApiService.getProducts(),
-      ]);
-
-      setBcvRateInfo(rateRes);
-      setProducts(prodRes.products);
-      setSyncInfo({
-        lastSyncTime: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        isSyncing: false,
-        isRemote: prodRes.fromRemote,
-        endpoint: prodRes.endpoint,
-        error: prodRes.error,
-      });
-
-      if (prodRes.fromRemote) {
-        showToast(`Catálogo sincronizado: ${prodRes.products.length} repuestos cargados desde Cloud Run.`);
+      if (user) {
+        localStorage.setItem(CLIENT_USER_KEY, JSON.stringify(user));
+      } else {
+        localStorage.removeItem(CLIENT_USER_KEY);
       }
-    } catch (err: any) {
-      setSyncInfo((prev) => ({
-        ...prev,
-        isSyncing: false,
-        error: err?.message || 'Error de sincronización con la API central',
-      }));
-    } finally {
-      setIsLoading(false);
+    } catch {
+      // ignore
     }
-  }, [showToast]);
+  }, []);
 
-  // Initial load
+  const signOutClient = useCallback(async () => {
+    await logoutClientUser();
+    setClientUser(null);
+    showToast('Sesión cerrada.');
+  }, [setClientUser, showToast]);
+
+  // Real-time Firestore subscription: products + settings/business
   useEffect(() => {
-    triggerSync();
+    let mounted = true;
 
-    // Auto-sync every 25 seconds
-    const interval = setInterval(() => {
-      triggerSync();
-    }, 25000);
+    const unsubProducts = subscribeToProducts(
+      (liveProducts) => {
+        if (!mounted) return;
+        setProducts(liveProducts);
+        setFirestoreError(null);
+        setIsLoading(false);
+      },
+      (err) => {
+        if (!mounted) return;
+        setFirestoreError(err);
+        setIsLoading(false);
+      }
+    );
 
-    return () => clearInterval(interval);
-  }, [triggerSync]);
+    const unsubSettings = subscribeToBusinessSettings(
+      async (liveSettings, firestoreBcvRate) => {
+        if (!mounted) return;
+        setSettings(liveSettings);
+
+        if (firestoreBcvRate && firestoreBcvRate > 0) {
+          setBcvRateInfo({
+            rateBcv: firestoreBcvRate,
+            lastUpdated: new Date().toISOString(),
+            source: `${liveSettings.workshopName} (Firestore en vivo)`,
+            isCustom: false,
+          });
+        } else {
+          // Fallback to live BCV API if settings/business doesn't specify bcvRate
+          const apiRate = await ApiService.getBcvRate();
+          if (mounted) {
+            setBcvRateInfo(apiRate);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Settings subscription warning:', err);
+      }
+    );
+
+    return () => {
+      mounted = false;
+      unsubProducts();
+      unsubSettings();
+    };
+  }, []);
 
   // Persist cart
   useEffect(() => {
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
     } catch {
-      // storage error
+      // ignore
     }
   }, [cart]);
 
   const refreshBcvRate = async () => {
+    if (settings.bcvRate && settings.bcvRate > 0) {
+      setBcvRateInfo({
+        rateBcv: settings.bcvRate,
+        lastUpdated: new Date().toISOString(),
+        source: `${settings.workshopName} (Firestore en vivo)`,
+        isCustom: false,
+      });
+      showToast(`Tasa BCV sincronizada: ${settings.bcvRate.toFixed(2)} Bs./$`);
+      return;
+    }
     const rate = await ApiService.getBcvRate();
     setBcvRateInfo(rate);
     showToast(`Tasa BCV actualizada: ${rate.rateBcv.toFixed(2)} Bs./$`);
   };
 
-  const updateBcvRateManual = (customRate: number) => {
-    if (customRate > 0) {
-      const updated = ApiService.setCustomBcvRate(customRate);
-      setBcvRateInfo(updated);
-      showToast(`Tasa BCV personalizada establecida: ${customRate.toFixed(2)} Bs./$`);
-    }
-  };
-
   const addToCart = (product: Product, quantity = 1) => {
+    if (product.stock <= 0) {
+      showToast('Este repuesto no tiene stock disponible.');
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -215,9 +249,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       value={{
         products,
         isLoading,
+        firestoreError,
         bcvRateInfo,
         refreshBcvRate,
-        updateBcvRateManual,
         cart,
         addToCart,
         removeFromCart,
@@ -239,10 +273,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         activeView,
         setActiveView,
         settings,
-        syncInfo,
-        triggerSync,
-        customApiUrl,
-        setCustomApiUrl,
+        clientUser,
+        setClientUser,
+        signOutClient,
+        isAuthModalOpen,
+        setIsAuthModalOpen,
         toastMessage,
         showToast,
       }}

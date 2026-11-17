@@ -1,30 +1,38 @@
 import { CartItem, CustomerData, WorkshopOrder } from '../types';
 
 /**
- * Formats a number to Venezuelan currency style: 1.250,50
+ * Formats a number to Venezuelan currency style: 1.250,50 Bs.
  */
 export function formatBs(amountBs: number): string {
   const rounded = Number(amountBs.toFixed(2));
-  return new Intl.NumberFormat('es-VE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(rounded) + ' Bs.';
+  return (
+    new Intl.NumberFormat('es-VE', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(rounded) + ' Bs.'
+  );
 }
 
 /**
  * Formats a number in USD currency: $12.50
  */
 export function formatUsd(amountUsd: number): string {
-  return '$' + new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amountUsd);
+  return (
+    '$' +
+    new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amountUsd)
+  );
 }
 
 /**
- * Formats dual price string: "$15.00 | Bs. 786,00"
+ * Formats dual price string: "$15.00 · 786,00 Bs."
  */
-export function formatDualPrice(amountUsd: number, rateBcv: number): {
+export function formatDualPrice(
+  amountUsd: number,
+  rateBcv: number
+): {
   usd: string;
   bs: string;
   combined: string;
@@ -40,26 +48,34 @@ export function formatDualPrice(amountUsd: number, rateBcv: number): {
 }
 
 /**
- * Generates official WhatsApp checkout link with formatted order details
+ * Generates official WhatsApp checkout link with formatted order & payment receipt details
  */
 export function generateWhatsAppOrderLink(
   items: CartItem[],
   customer: CustomerData,
   rateBcv: number,
-  storeWhatsapp: string
+  storeWhatsapp: string,
+  orderId?: string,
+  commercialName = 'Servimotos Cristo Centro',
+  onlineStoreName = 'Mercado Moto CC'
 ): string {
-  const totalUsd = items.reduce((acc, item) => acc + item.product.priceUsd * item.quantity, 0);
+  const totalUsd = items.reduce(
+    (acc, item) => acc + item.product.priceUsd * item.quantity,
+    0
+  );
   const totalBs = totalUsd * rateBcv;
 
   const paymentLabels: Record<string, string> = {
-    pago_movil: 'Pago Móvil Banesco',
-    divisas: 'Divisas en Efectivo (Taller)',
+    pago_movil: 'Pago Móvil',
+    transferencia: 'Transferencia Bancaria',
     binance: 'Binance Pay (USDT)',
+    divisas: 'Divisas en Efectivo',
   };
 
   const lines: string[] = [
-    '🏍️ *NUEVO PEDIDO - MERCADO MOTO CC*',
-    '_(Servimotos Cristo Centro)_',
+    `🏍️ *NUEVO PEDIDO - ${onlineStoreName.toUpperCase()}*`,
+    `_(${commercialName})_`,
+    orderId ? `🆔 *Pedido:* ${orderId.toUpperCase()}` : '',
     '',
     '*DATOS DEL CLIENTE:*',
     `• Nombre: ${customer.fullName}`,
@@ -67,12 +83,17 @@ export function generateWhatsAppOrderLink(
     `• Cédula/RIF: ${customer.idNumber}`,
     `• Ciudad / Estado: ${customer.cityState}`,
     '',
-    '*MÉTODO DE ENVÍO / RETIRO:*',
+    '*MÉTODO DE ENVÍO / ENTREGA:*',
     `• Entrega: ${customer.shippingAgency}`,
-    customer.agencyOfficeAddress ? `• Oficina / Dirección: ${customer.agencyOfficeAddress}` : '',
+    customer.agencyOfficeAddress
+      ? `• Dirección / Oficina: ${customer.agencyOfficeAddress}`
+      : '',
     '',
     '*MÉTODO DE PAGO:*',
     `• ${paymentLabels[customer.paymentMethod] || customer.paymentMethod}`,
+    customer.paymentReference
+      ? `• Nro. de Referencia / Comprobante: *${customer.paymentReference}*`
+      : '',
     '',
     '*DETALLE DE REPUESTOS:*',
   ];
@@ -82,7 +103,7 @@ export function generateWhatsAppOrderLink(
     const itemTotalBs = itemTotalUsd * rateBcv;
     lines.push(
       `${index + 1}. *${item.product.name}* (x${item.quantity})`,
-      `   Cod: ${item.product.code} | Marca: ${item.product.brand}`,
+      `   SKU: ${item.product.sku || item.product.code} | Marca: ${item.product.brand}`,
       `   Subtotal: ${formatUsd(itemTotalUsd)} / ${formatBs(itemTotalBs)}`
     );
   });
@@ -90,17 +111,20 @@ export function generateWhatsAppOrderLink(
   lines.push(
     '',
     '-----------------------------',
-    `*TOTAL A PAGAR:*`,
+    '*TOTAL A PAGAR:*',
     `💵 *${formatUsd(totalUsd)} USD*`,
-    `🇻🇪 *${formatBs(totalBs)}* _(Tasa Oficial BCV: ${rateBcv.toFixed(2)} Bs./$)_`,
+    `🇻🇪 *${formatBs(totalBs)}* _(Tasa BCV: ${rateBcv.toFixed(2)} Bs./$)_`,
     '-----------------------------'
   );
 
   if (customer.notes && customer.notes.trim()) {
-    lines.push('', `*Notas adicionales:* ${customer.notes.trim()}`);
+    lines.push('', `*Notas:* ${customer.notes.trim()}`);
   }
 
-  lines.push('', 'Hola, deseo procesar y confirmar este pedido. ¿Tienen disponibilidad inmediata para despacho?');
+  lines.push(
+    '',
+    'Adjunto mi comprobante para confirmar el despacho de este pedido. ¡Gracias!'
+  );
 
   const cleanText = lines.filter((l) => l !== '').join('\n');
   const encodedText = encodeURIComponent(cleanText);
@@ -114,10 +138,10 @@ export function generateWhatsAppOrderLink(
  */
 export function generateWhatsAppConsultLink(
   order: WorkshopOrder,
-  storeWhatsapp: string
+  storeWhatsapp: string,
+  commercialName = 'Servimotos Cristo Centro'
 ): string {
-  const text = 
-`Hola Servimotos Cristo Centro, quisiera consultar información sobre el servicio de mi moto:
+  const text = `Hola ${commercialName}, quisiera consultar información sobre el servicio de mi moto:
 • Orden: #${order.orderNumber}
 • Vehículo: ${order.bikeBrand} ${order.bikeModel} (${order.bikePlate})
 • Propietario: ${order.clientName}

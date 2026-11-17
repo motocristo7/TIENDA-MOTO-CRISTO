@@ -8,23 +8,17 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {
+      port: 3000,
+      host: '0.0.0.0',
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      proxy: {
-        '/api-main': {
-          target: 'https://ais-pre-flhofni32tpb4dwfwnak7d-506340403707.us-west1.run.app',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api-main/, ''),
-          secure: false,
-        },
-      },
     },
   };
 });
