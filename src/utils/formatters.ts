@@ -55,7 +55,7 @@ export function generateWhatsAppOrderLink(
   customer: CustomerData,
   rateBcv: number,
   storeWhatsapp: string,
-  orderId?: string,
+  orderCode?: string,
   commercialName = 'Servimotos Cristo Centro',
   onlineStoreName = 'Mercado Moto CC'
 ): string {
@@ -75,13 +75,13 @@ export function generateWhatsAppOrderLink(
   const lines: string[] = [
     `🏍️ *NUEVO PEDIDO - ${onlineStoreName.toUpperCase()}*`,
     `_(${commercialName})_`,
-    orderId ? `🆔 *Pedido:* ${orderId.toUpperCase()}` : '',
+    orderCode ? `🆔 *Código:* ${orderCode.toUpperCase()}` : '',
     '',
     '*DATOS DEL CLIENTE:*',
     `• Nombre: ${customer.fullName}`,
     `• Teléfono: ${customer.phone}`,
     `• Cédula/RIF: ${customer.idNumber}`,
-    `• Ciudad / Estado: ${customer.cityState}`,
+    `• Ciudad / Estado: ${customer.city}, ${customer.state}`,
     '',
     '*MÉTODO DE ENVÍO / ENTREGA:*',
     `• Entrega: ${customer.shippingAgency}`,

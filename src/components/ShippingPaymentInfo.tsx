@@ -222,6 +222,24 @@ export const ShippingPaymentInfo: React.FC = () => {
         </div>
       </div>
 
+      {/* Warranty & Invoice Disclaimer from settings/business */}
+      {(settings.warrantyPolicy || settings.invoiceDisclaimer) && (
+        <div className="bg-neutral-900/70 border border-neutral-800 rounded-2xl p-5 text-xs text-neutral-400 space-y-2">
+          {settings.invoiceDisclaimer && (
+            <p>
+              <span className="text-neutral-200 font-semibold">Condiciones de venta y tasa:</span>{' '}
+              {settings.invoiceDisclaimer}
+            </p>
+          )}
+          {settings.warrantyPolicy && (
+            <p>
+              <span className="text-neutral-200 font-semibold">Política de garantía:</span>{' '}
+              {settings.warrantyPolicy}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Direct Contact Banner */}
       <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div>

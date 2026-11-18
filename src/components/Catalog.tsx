@@ -1,21 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { ShoppingBag, Eye, Check, Filter, RefreshCw, AlertCircle } from 'lucide-react';
+import { ShoppingBag, Check, RefreshCw, AlertCircle, Zap } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { Product, ProductCategory, MotoBrand } from '../types';
+import { Product, ProductCategory } from '../types';
 import { formatDualPrice } from '../utils/formatters';
 import { ProductDetailModal } from './ProductDetailModal';
-
-const DEFAULT_BRANDS: MotoBrand[] = [
-  'Todas',
-  'Empire Keeway',
-  'Bera',
-  'Motos Toro',
-  'Suzuki',
-  'Yamaha',
-  'MD Haojin',
-  'Ava',
-  'Multimarca',
-];
 
 type SortOption = 'name-asc' | 'featured' | 'price-low' | 'price-high';
 
@@ -26,6 +14,7 @@ export const Catalog: React.FC = () => {
     firestoreError,
     bcvRateInfo,
     addToCart,
+    buyNow,
     selectedBrand,
     setSelectedBrand,
     selectedCategory,
@@ -40,27 +29,21 @@ export const Catalog: React.FC = () => {
   const [sortOption, setSortOption] = useState<SortOption>('name-asc');
   const [addedItemIds, setAddedItemIds] = useState<Record<string, boolean>>({});
 
-  // Derive categories dynamically from live Firestore inventory
+  // Derive categories dynamically from live Firestore inventory & customCategories
   const availableCategories = useMemo<ProductCategory[]>(() => {
     const set = new Set<string>(['Todas']);
+    if (Array.isArray(settings.customCategories)) {
+      settings.customCategories.forEach((c) => {
+        if (c && c.trim()) set.add(c.trim());
+      });
+    }
     products.forEach((p) => {
       if (p.category && p.category.trim()) {
         set.add(p.category.trim());
       }
     });
     return Array.from(set);
-  }, [products]);
-
-  // Merge Venezuelan moto brands with any additional brands found in Firestore
-  const availableBrands = useMemo<MotoBrand[]>(() => {
-    const set = new Set<string>(DEFAULT_BRANDS);
-    products.forEach((p) => {
-      if (p.brand && p.brand.trim()) {
-        set.add(p.brand.trim());
-      }
-    });
-    return Array.from(set);
-  }, [products]);
+  }, [products, settings.customCategories]);
 
   // Filter and sort products (stock > 0 enforced, alphabetical A-Z default)
   const filteredProducts = useMemo(() => {
@@ -70,7 +53,6 @@ export const Catalog: React.FC = () => {
           return false;
         }
 
-        // Brand filter (matches brand, Multimarca, or compatibility)
         if (selectedBrand !== 'Todas') {
           const targetBrand = selectedBrand.toLowerCase();
           const prodBrand = p.brand.toLowerCase();
@@ -88,14 +70,12 @@ export const Catalog: React.FC = () => {
           }
         }
 
-        // Category filter
         if (selectedCategory !== 'Todas') {
           if (p.category.toLowerCase() !== selectedCategory.toLowerCase()) {
             return false;
           }
         }
 
-        // Search query (name, sku, barcode, brand, compatibility, description)
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
           const matchName = p.name.toLowerCase().includes(q);
@@ -130,54 +110,53 @@ export const Catalog: React.FC = () => {
     setAddedItemIds((prev) => ({ ...prev, [product.id]: true }));
     setTimeout(() => {
       setAddedItemIds((prev) => ({ ...prev, [product.id]: false }));
-    }, 1500);
+    }, 1400);
+  };
+
+  const handleBuyNow = (e: React.MouseEvent, product: Product) => {
+    e.stopPropagation();
+    buyNow(product, 1);
   };
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      {/* Section Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-neutral-800">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-amber-500 font-semibold uppercase tracking-wider">
-            <span>Inventario en Tiempo Real</span>
-            <span aria-hidden="true">·</span>
-            <span>{settings.workshopName}</span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-            Catálogo de Repuestos & Accesorios
+    <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+      {/* Compact Header & Sort Bar */}
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-neutral-800">
+        <div className="min-w-0">
+          <h2 className="text-base sm:text-xl font-extrabold text-white truncate">
+            Catálogo de Repuestos
           </h2>
-          <p className="text-xs sm:text-sm text-neutral-400 mt-1">
-            {filteredProducts.length} repuestos disponibles en stock listos para entrega o envío nacional.
+          <p className="text-[11px] sm:text-xs text-neutral-400">
+            {filteredProducts.length} disponibles en stock
           </p>
         </div>
 
-        {/* Sort selector */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <span className="text-xs text-neutral-400 whitespace-nowrap">Ordenar:</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[11px] text-neutral-400 hidden sm:inline">Ordenar:</span>
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as SortOption)}
-            className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+            className="bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1.5 text-[11px] sm:text-xs text-white focus:outline-none focus:border-amber-400"
           >
-            <option value="name-asc">Alfabético (A - Z)</option>
-            <option value="featured">Destacados primero</option>
-            <option value="price-low">Precio: Menor a Mayor</option>
-            <option value="price-high">Precio: Mayor a Menor</option>
+            <option value="name-asc">Nombre (A - Z)</option>
+            <option value="featured">Destacados</option>
+            <option value="price-low">Menor Precio</option>
+            <option value="price-high">Mayor Precio</option>
           </select>
         </div>
       </div>
 
-      {/* Category Tabs */}
+      {/* Compact Horizontal Category Strip */}
       {availableCategories.length > 1 && (
-        <div className="mt-6 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none">
           {availableCategories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
                 selectedCategory === cat
-                  ? 'bg-amber-400 text-neutral-950 font-bold shadow-sm'
-                  : 'bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-850 border border-neutral-800'
+                  ? 'bg-amber-400 text-neutral-950 font-bold'
+                  : 'bg-neutral-900 text-neutral-300 hover:text-white border border-neutral-800'
               }`}
             >
               {cat}
@@ -186,46 +165,25 @@ export const Catalog: React.FC = () => {
         </div>
       )}
 
-      {/* Brand Filter Bar */}
-      <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-2 text-xs">
-        <span className="text-neutral-500 font-medium whitespace-nowrap mr-1 flex items-center gap-1">
-          <Filter className="w-3.5 h-3.5" />
-          Marca:
-        </span>
-        {availableBrands.map((brand) => (
-          <button
-            key={brand}
-            onClick={() => setSelectedBrand(brand)}
-            className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer whitespace-nowrap ${
-              selectedBrand === brand
-                ? 'bg-neutral-200 text-neutral-950 font-bold'
-                : 'text-neutral-400 hover:text-white bg-neutral-950 hover:bg-neutral-900 border border-neutral-850'
-            }`}
-          >
-            {brand}
-          </button>
-        ))}
-      </div>
-
-      {/* Product Grid */}
+      {/* Product Grid: 2 columns on mobile phones, 3-4 on tablets/desktop */}
       {isLoading ? (
-        <div className="mt-12 text-center py-20 bg-neutral-900/40 rounded-2xl border border-neutral-850">
-          <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-neutral-300 font-medium">
+        <div className="mt-8 text-center py-16 bg-neutral-900/40 rounded-xl border border-neutral-850">
+          <RefreshCw className="w-7 h-7 text-amber-500 animate-spin mx-auto mb-2.5" />
+          <p className="text-xs sm:text-sm text-neutral-300 font-medium">
             Cargando catálogo en tiempo real desde {settings.workshopName}...
           </p>
         </div>
       ) : filteredProducts.length === 0 ? (
-        <div className="mt-12 text-center py-16 bg-neutral-900/50 rounded-2xl border border-neutral-800 px-6 max-w-xl mx-auto space-y-4">
-          <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+        <div className="mt-8 text-center py-12 bg-neutral-900/50 rounded-xl border border-neutral-800 px-5 max-w-lg mx-auto space-y-3">
+          <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
           {products.length === 0 ? (
             <div>
-              <h3 className="text-base font-bold text-white">
+              <h3 className="text-sm sm:text-base font-bold text-white">
                 {firestoreError
                   ? 'No se pudo conectar con el inventario en este momento'
                   : 'Actualmente no hay repuestos con stock disponible'}
               </h3>
-              <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
+              <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
                 {firestoreError
                   ? 'Verifica tu conexión a internet o consulta directamente por nuestro WhatsApp oficial.'
                   : 'Tan pronto ingresen repuestos al inventario con stock positivo, aparecerán aquí automáticamente.'}
@@ -234,30 +192,28 @@ export const Catalog: React.FC = () => {
           ) : (
             <>
               <div>
-                <h3 className="text-base font-bold text-white">
-                  No encontramos repuestos que coincidan con los filtros
+                <h3 className="text-sm sm:text-base font-bold text-white">
+                  No encontramos repuestos con esos filtros
                 </h3>
-                <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
-                  Prueba seleccionando "Todas" en marcas y categorías o limpiando el texto del buscador.
+                <p className="text-xs text-neutral-400 mt-1">
+                  Prueba limpiando los filtros o el texto de búsqueda.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
-                <button
-                  onClick={() => {
-                    setSelectedBrand('Todas');
-                    setSelectedCategory('Todas');
-                    setSearchQuery('');
-                  }}
-                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Ver todos los repuestos disponibles
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setSelectedBrand('Todas');
+                  setSelectedCategory('Todas');
+                  setSearchQuery('');
+                }}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              >
+                Ver todos los repuestos
+              </button>
             </>
           )}
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="mt-3 sm:mt-4 grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
           {filteredProducts.map((product) => {
             const price = formatDualPrice(product.priceUsd, bcvRateInfo.rateBcv);
             const isAdded = addedItemIds[product.id];
@@ -266,10 +222,10 @@ export const Catalog: React.FC = () => {
               <div
                 key={product.id}
                 onClick={() => setSelectedProduct(product)}
-                className="group flex flex-col justify-between bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl cursor-pointer"
+                className="group flex flex-col justify-between bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl overflow-hidden transition-all duration-150 hover:shadow-lg cursor-pointer"
               >
-                {/* Image Container */}
-                <div className="relative aspect-[4/3] bg-neutral-950 p-4 flex items-center justify-center overflow-hidden">
+                {/* Compact Image Container */}
+                <div className="relative aspect-square sm:aspect-[4/3] bg-neutral-950 p-2 sm:p-3 flex items-center justify-center overflow-hidden">
                   <img
                     src={product.imageUrl}
                     alt={product.name}
@@ -282,86 +238,76 @@ export const Catalog: React.FC = () => {
                       )}`;
                     }}
                   />
-                  {product.featured && (
-                    <span className="absolute top-2.5 left-2.5 text-[10px] font-bold tracking-wider text-amber-400 uppercase bg-neutral-900/90 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                      Destacado
-                    </span>
-                  )}
-                  <span className="absolute bottom-2.5 right-2.5 text-[10px] font-mono text-neutral-400 bg-neutral-900/90 px-1.5 py-0.5 rounded border border-neutral-800">
+                  <span className="absolute bottom-1.5 right-1.5 text-[9px] sm:text-[10px] font-mono text-neutral-400 bg-neutral-900/90 px-1.5 py-0.5 rounded border border-neutral-800 max-w-[75%] truncate">
                     {product.sku || product.code}
                   </span>
                 </div>
 
-                {/* Card Content */}
-                <div className="p-4 flex-1 flex flex-col justify-between">
+                {/* Compact Card Body */}
+                <div className="p-2.5 sm:p-3.5 flex-1 flex flex-col justify-between">
                   <div>
-                    {/* Unboxed Metadata Line */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 font-medium">
-                      <span className="text-amber-400 font-semibold">{product.brand}</span>
+                    <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-neutral-400 font-medium truncate">
+                      <span className="text-amber-400 font-semibold shrink-0">{product.brand}</span>
                       <span aria-hidden="true">·</span>
                       <span className="truncate">{product.category}</span>
                     </div>
 
-                    {/* Product Name */}
-                    <h3 className="mt-1 text-sm font-bold text-white group-hover:text-amber-400 transition-colors line-clamp-2 leading-snug">
+                    <h3 className="mt-0.5 text-xs sm:text-sm font-bold text-white group-hover:text-amber-400 transition-colors line-clamp-2 leading-snug min-h-[2.1rem] sm:min-h-[2.5rem]">
                       {product.name}
                     </h3>
 
-                    {/* Compatibility Snippet */}
-                    <p className="mt-1.5 text-[11px] text-neutral-400 line-clamp-1">
-                      <span className="text-neutral-500 font-medium">Aplica a:</span>{' '}
-                      {product.compatibility || product.compatibleModels.join(', ')}
-                    </p>
+                    {product.compatibility && (
+                      <p className="mt-1 text-[10px] sm:text-[11px] text-neutral-400 line-clamp-1">
+                        {product.compatibility}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Price & Action Row */}
-                  <div className="mt-4 pt-3 border-t border-neutral-800/80 flex items-end justify-between gap-2">
-                    <div>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base font-mono tabular-nums font-extrabold text-amber-400">
-                          {price.usd}
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-mono tabular-nums text-neutral-300 block">
-                        {price.bs}
+                  {/* Dual Price + Stock + 2 Action Buttons */}
+                  <div className="mt-2 pt-2 border-t border-neutral-800/80">
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="text-sm sm:text-base font-mono tabular-nums font-extrabold text-amber-400">
+                        {price.usd}
                       </span>
-                      <span className="text-[10px] text-emerald-400/90 block mt-0.5">
-                        Disp: {product.stock} und.
+                      <span className="text-[10px] text-emerald-400 font-medium tabular-nums">
+                        Stock: {product.stock}
                       </span>
                     </div>
+                    <span className="text-[10px] sm:text-[11px] font-mono tabular-nums text-neutral-300 block truncate">
+                      {price.bs}
+                    </span>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProduct(product);
-                        }}
-                        className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
-                        title="Ver detalles completos y compatibilidad"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-
+                    {/* Two Clear Action Buttons: "Al carrito" & "Comprar" */}
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
                       <button
                         onClick={(e) => handleQuickAdd(e, product)}
-                        className={`flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap border ${
                           isAdded
-                            ? 'bg-emerald-500 text-neutral-950'
-                            : 'bg-amber-400 hover:bg-amber-300 text-neutral-950'
+                            ? 'bg-emerald-500 text-neutral-950 border-emerald-500'
+                            : 'bg-neutral-800 hover:bg-neutral-700 text-white border-neutral-700'
                         }`}
                         title="Añadir 1 unidad al carrito"
                       >
                         {isAdded ? (
                           <>
-                            <Check className="w-3.5 h-3.5" />
-                            <span className="text-[11px]">Listo</span>
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span>Listo</span>
                           </>
                         ) : (
                           <>
-                            <ShoppingBag className="w-3.5 h-3.5" />
-                            <span className="text-[11px]">Agregar</span>
+                            <ShoppingBag className="w-3 h-3 shrink-0" />
+                            <span>Al carrito</span>
                           </>
                         )}
+                      </button>
+
+                      <button
+                        onClick={(e) => handleBuyNow(e, product)}
+                        className="flex items-center justify-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-bold bg-amber-400 hover:bg-amber-300 text-neutral-950 transition-colors cursor-pointer whitespace-nowrap"
+                        title="Comprar ahora"
+                      >
+                        <Zap className="w-3 h-3 shrink-0" />
+                        <span>Comprar</span>
                       </button>
                     </div>
                   </div>

@@ -16,6 +16,7 @@ export interface Product {
   stock: number;
   imageUrl: string;
   barcode?: string;
+  warehouseLocation?: string;
   description: string;
   specs?: Record<string, string>;
   isOriginal: boolean;
@@ -46,7 +47,8 @@ export interface CustomerData {
   phone: string;
   idNumber: string; // Cédula o RIF
   email?: string;
-  cityState: string;
+  city: string;
+  state: string;
   shippingAgency: ShippingAgency;
   agencyOfficeAddress: string;
   paymentMethod: PaymentMethodType;
@@ -60,6 +62,7 @@ export interface BankDetails {
     phone: string;
     idNumber: string;
     accountHolder?: string;
+    qrUrl?: string;
   };
   transferencia: {
     bank: string;
@@ -79,18 +82,27 @@ export interface StoreSettings {
   storeName: string;
   workshopName: string;
   rif: string;
+  email?: string;
+  city?: string;
+  state?: string;
   phoneWhatsapp: string;
   phoneCall: string;
   address: string;
   operatingHours: string;
   bcvRate?: number;
+  bcvOfficialDate?: string;
+  bcvLastUpdated?: string;
+  bcvSource?: string;
+  customCategories?: string[];
+  warrantyPolicy?: string;
+  invoiceDisclaimer?: string;
   bankDetails: BankDetails;
-  // Backward compatibility alias
   pagoMovil: {
     bank: string;
     phone: string;
     idNumber: string;
     accountHolder: string;
+    qrUrl?: string;
   };
   binancePayId: string;
 }
@@ -114,20 +126,26 @@ export interface WorkshopOrder {
   bikeBrand: string;
   bikePlate: string;
   bikeColor: string;
+  bikeYear?: string | number;
+  serviceType?: string;
+  fuelLevel?: string;
   entryDate: string;
   estimatedDeliveryDate: string;
   status: WorkshopServiceStatus;
   statusLabel: string;
   mechanicInCharge: string;
+  mechanicPhone?: string;
   issueReported: string;
   workDone: string[];
   partsUsed: Array<{
     name: string;
+    sku?: string;
     quantity: number;
     priceUsd: number;
   }>;
   laborUsd: number;
   totalUsd: number;
+  totalBs?: number;
   notes?: string;
   mileageKm: number;
 }
@@ -148,43 +166,14 @@ export interface SaleRecord {
     unitPriceUsd: number;
     totalUsd: number;
   }>;
+  subtotalUsd?: number;
+  discountUsd?: number;
+  taxUsd?: number;
   totalUsd: number;
   totalBs: number;
   bcvRateUsed?: number;
   paymentMethod: string;
   status: string;
-}
-
-export interface OnlineOrder {
-  id: string;
-  orderNumber: string;
-  customerId: string;
-  customerName: string;
-  customerPhone: string;
-  customerDocument: string;
-  customerEmail?: string;
-  cityState: string;
-  shippingMethod: ShippingAgency;
-  shippingAddress: string;
-  paymentMethod: PaymentMethodType;
-  paymentReference?: string;
-  notes?: string;
-  items: Array<{
-    productId: string;
-    sku: string;
-    name: string;
-    brand: string;
-    quantity: number;
-    unitPriceUsd: number;
-    subtotalUsd: number;
-    imageUrl: string;
-  }>;
-  totalUsd: number;
-  totalBs: number;
-  bcvRate: number;
-  status: string;
-  source: string;
-  createdAt: string;
 }
 
 export interface ClientUser {
@@ -200,6 +189,7 @@ export interface ClientUser {
 export interface ExchangeRateInfo {
   rateBcv: number;
   lastUpdated: string;
+  officialDate?: string;
   source: string;
   isCustom?: boolean;
 }

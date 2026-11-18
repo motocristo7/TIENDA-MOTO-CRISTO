@@ -35,6 +35,8 @@ export const CartDrawer: React.FC = () => {
     cart,
     isCartOpen,
     setIsCartOpen,
+    cartStep: step,
+    setCartStep: setStep,
     removeFromCart,
     updateQuantity,
     clearCart,
@@ -47,12 +49,13 @@ export const CartDrawer: React.FC = () => {
     showToast,
   } = useStore();
 
-  const [step, setStep] = useState<'cart' | 'checkout' | 'confirmed'>('cart');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [qrHidden, setQrHidden] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<{
     orderId: string;
+    orderCode: string;
     totalUsd: number;
     totalBs: number;
     whatsappUrl: string;
@@ -63,7 +66,8 @@ export const CartDrawer: React.FC = () => {
     phone: '',
     idNumber: '',
     email: '',
-    cityState: 'Mérida',
+    city: settings.city || 'Mérida',
+    state: settings.state || 'Mérida',
     shippingAgency: 'Retiro en tienda',
     agencyOfficeAddress: '',
     paymentMethod: 'pago_movil',
@@ -73,7 +77,6 @@ export const CartDrawer: React.FC = () => {
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Pre-fill customer data when logged in
   useEffect(() => {
     if (clientUser) {
       setCustomer((prev) => ({
@@ -128,13 +131,14 @@ export const CartDrawer: React.FC = () => {
         customer,
         bcvRateInfo.rateBcv,
         settings.phoneWhatsapp,
-        result.orderId,
+        result.orderCode,
         settings.workshopName,
         settings.storeName
       );
 
       setConfirmedOrder({
         orderId: result.orderId,
+        orderCode: result.orderCode,
         totalUsd: result.totalUsd,
         totalBs: result.totalBs,
         whatsappUrl,
@@ -142,7 +146,7 @@ export const CartDrawer: React.FC = () => {
 
       clearCart();
       setStep('confirmed');
-      showToast(`¡Pedido ${result.orderId.toUpperCase()} registrado con éxito!`);
+      showToast(`¡Pedido ${result.orderCode} registrado con éxito!`);
     } catch (err: any) {
       setSubmitError(
         err?.message ||
@@ -165,7 +169,6 @@ export const CartDrawer: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
       <div
         onClick={handleCloseDrawer}
         className="absolute inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
@@ -203,17 +206,21 @@ export const CartDrawer: React.FC = () => {
 
                 <div>
                   <span className="text-xs font-mono text-amber-400 uppercase tracking-wider font-bold">
-                    Orden #{confirmedOrder.orderId.toUpperCase()}
+                    Pedido {confirmedOrder.orderCode}
                   </span>
                   <h3 className="text-xl font-extrabold text-white mt-1">
                     ¡Pedido guardado en sistema!
                   </h3>
                   <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
-                    Tu pedido ya fue enviado al panel de {settings.workshopName} y tus repuestos fueron reservados del inventario.
+                    Tu pedido ya fue sincronizado con {settings.workshopName} y tus repuestos fueron descontados del inventario.
                   </p>
                 </div>
 
                 <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 text-xs space-y-1.5">
+                  <div className="flex justify-between text-neutral-400">
+                    <span>Código de Seguimiento:</span>
+                    <span className="font-mono font-bold text-white">{confirmedOrder.orderCode}</span>
+                  </div>
                   <div className="flex justify-between text-neutral-400">
                     <span>Total en Divisas:</span>
                     <span className="font-mono font-bold text-white">
@@ -433,13 +440,22 @@ export const CartDrawer: React.FC = () => {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="grid grid-cols-2 gap-2">
                       <input
                         type="text"
-                        placeholder="Ciudad / Estado"
-                        value={customer.cityState}
+                        placeholder="Ciudad"
+                        value={customer.city}
                         onChange={(e) =>
-                          setCustomer({ ...customer, cityState: e.target.value })
+                          setCustomer({ ...customer, city: e.target.value })
+                        }
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Estado"
+                        value={customer.state}
+                        onChange={(e) =>
+                          setCustomer({ ...customer, state: e.target.value })
                         }
                         className="w-full bg-neutral-900 border border-neutral-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
                       />
@@ -536,7 +552,6 @@ export const CartDrawer: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Payment Details Card */}
                   {customer.paymentMethod === 'pago_movil' && (
                     <div className="p-3 bg-neutral-900 rounded-lg border border-neutral-800 space-y-1.5 text-[11px]">
                       <div className="flex justify-between items-center text-neutral-300">
@@ -580,6 +595,16 @@ export const CartDrawer: React.FC = () => {
                       {pagoMovil.accountHolder && (
                         <div className="text-[10px] text-neutral-500 pt-1">
                           Titular: {pagoMovil.accountHolder}
+                        </div>
+                      )}
+                      {pagoMovil.qrUrl && !qrHidden && (
+                        <div className="pt-2 flex justify-center">
+                          <img
+                            src={pagoMovil.qrUrl}
+                            alt="QR Pago Móvil"
+                            className="w-32 h-32 object-contain rounded-lg border border-neutral-800 bg-white p-1"
+                            onError={() => setQrHidden(true)}
+                          />
                         </div>
                       )}
                     </div>

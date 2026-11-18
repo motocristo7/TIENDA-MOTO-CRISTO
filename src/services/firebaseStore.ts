@@ -28,6 +28,8 @@ import {
   CartItem,
   CustomerData,
   ClientUser,
+  ShippingAgency,
+  PaymentMethodType,
 } from '../types';
 
 export const RELATIVE_IMAGE_BASE_URL =
@@ -36,38 +38,41 @@ export const RELATIVE_IMAGE_BASE_URL =
 export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   storeName: 'Mercado Moto CC',
   workshopName: 'Servimotos Cristo Centro',
-  rif: 'J-50028472-1',
-  phoneWhatsapp: import.meta.env.VITE_STORE_WHATSAPP || '584122242450',
-  phoneCall: '0412-2242450',
-  address: 'Av. Principal Cristo Centro, Mérida / Caracas - Venezuela',
+  rif: 'V-19996141-8',
+  email: 'SERVIMOTOSCRISTOCENTRO@gmail.com',
+  city: 'Mérida',
+  state: 'Mérida',
+  phoneWhatsapp: import.meta.env.VITE_STORE_WHATSAPP || '584127860509',
+  phoneCall: '0412-7860509',
+  address: 'Mérida, Venezuela',
   operatingHours: 'Lunes a Sábado: 8:00 AM - 5:30 PM (Horario Corrido)',
   bankDetails: {
     pagoMovil: {
-      bank: 'Banesco (0134)',
+      bank: '0134 - Banesco',
       phone: '0412-2242450',
-      idNumber: 'J-50028472-1',
+      idNumber: 'V-19996141',
       accountHolder: 'Servimotos Cristo Centro',
     },
     transferencia: {
-      bank: 'Banesco (0134)',
-      accountNumber: '0134-0000-00-0000000000',
-      accountType: 'Corriente',
-      idNumber: 'J-50028472-1',
-      accountHolder: 'Servimotos Cristo Centro',
+      bank: 'Banesco Banco Universal',
+      accountNumber: '0134-0030-08-0301034334',
+      accountType: 'Cuenta Corriente',
+      idNumber: 'V-19996141-8',
+      accountHolder: 'Servimotos Cristo Centro C.A.',
     },
     binance: {
-      payId: '542910384',
-      email: 'servimotoscristocentro@gmail.com',
+      payId: '66195935',
+      email: 'SERVIMOTOSCRISTOCENTRO@gmail.com',
       holder: 'Servimotos Cristo Centro',
     },
   },
   pagoMovil: {
-    bank: 'Banesco (0134)',
+    bank: '0134 - Banesco',
     phone: '0412-2242450',
-    idNumber: 'J-50028472-1',
+    idNumber: 'V-19996141',
     accountHolder: 'Servimotos Cristo Centro',
   },
-  binancePayId: '542910384',
+  binancePayId: '66195935',
 };
 
 const FALLBACK_SVG =
@@ -84,7 +89,6 @@ export function resolveProductImageUrl(rawUrl: unknown): string {
   const trimmed = rawUrl.trim();
   if (!trimmed) return FALLBACK_SVG;
 
-  // Respect full URLs like https://lh3.googleusercontent.com/... or data URIs
   if (
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
@@ -93,31 +97,57 @@ export function resolveProductImageUrl(rawUrl: unknown): string {
     return trimmed;
   }
 
-  // Relative paths starting with / use the specified Cloud Run base URL
   const cleanBase = RELATIVE_IMAGE_BASE_URL.replace(/\/+$/, '');
   const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   return `${cleanBase}${cleanPath}`;
 }
 
-function normalizeCompatibility(raw: unknown, fallbackBrand: string): { text: string; list: string[] } {
+export function resolveOptionalAssetUrl(rawUrl: unknown): string | undefined {
+  if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return undefined;
+  const trimmed = rawUrl.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed;
+  }
+  const cleanBase = RELATIVE_IMAGE_BASE_URL.replace(/\/+$/, '');
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${cleanBase}${cleanPath}`;
+}
+
+function normalizeCompatibility(
+  raw: unknown,
+  fallbackBrand: string
+): { text: string; list: string[] } {
   if (Array.isArray(raw)) {
     const list = raw.map((x) => String(x).trim()).filter(Boolean);
-    return { text: list.join(', '), list: list.length > 0 ? list : [fallbackBrand] };
+    return {
+      text: list.join(', '),
+      list: list.length > 0 ? list : [fallbackBrand || 'Multimarca'],
+    };
   }
   if (typeof raw === 'string' && raw.trim()) {
     const list = raw
       .split(/[,;\n|]/)
       .map((s) => s.trim())
       .filter(Boolean);
-    return { text: raw.trim(), list: list.length > 0 ? list : [fallbackBrand] };
+    return {
+      text: raw.trim(),
+      list: list.length > 0 ? list : [fallbackBrand || 'Multimarca'],
+    };
   }
-  return { text: fallbackBrand || 'Multimarca', list: [fallbackBrand || 'Multimarca'] };
+  return {
+    text: fallbackBrand || 'Multimarca',
+    list: [fallbackBrand || 'Multimarca'],
+  };
 }
 
 function mapFirestoreProduct(docId: string, data: Record<string, any>): Product {
   const sku = String(data.sku || data.code || data.codigo || docId);
   const name = String(data.name || data.nombre || data.title || 'Repuesto').trim();
-  const brand = String(data.brand || data.marca || 'Multimarca').trim();
+  const brand = String(data.brand || data.marca || '').trim() || 'Multimarca';
   const category = String(data.category || data.categoria || 'General').trim();
   const { text: compatibilityText, list: compatibleModels } = normalizeCompatibility(
     data.compatibility ?? data.compatibleModels ?? data.modelos ?? data.aplicacion,
@@ -142,6 +172,7 @@ function mapFirestoreProduct(docId: string, data: Record<string, any>): Product 
 
   const description = String(data.description || data.descripcion || '').trim();
   const barcode = data.barcode ? String(data.barcode) : undefined;
+  const warehouseLocation = data.warehouseLocation ? String(data.warehouseLocation) : undefined;
   const featured = Boolean(data.featured);
   const isOriginal = Boolean(data.isOriginal ?? data.original ?? false);
 
@@ -164,6 +195,7 @@ function mapFirestoreProduct(docId: string, data: Record<string, any>): Product 
     stock,
     imageUrl,
     barcode,
+    warehouseLocation,
     description,
     specs:
       typeof data.specs === 'object' && data.specs !== null ? data.specs : undefined,
@@ -205,6 +237,7 @@ export function subscribeToProducts(
 
 /**
  * Subscribes in real time to Firestore `settings/business` document.
+ * Matches exact schema from the primary app (`bankDetails.pagoMovilBank`, `pagoMovilId`, `bankTransferName`, `bankTransferAccount`, etc.)
  */
 export function subscribeToBusinessSettings(
   onUpdate: (settings: StoreSettings, bcvRate?: number) => void,
@@ -235,47 +268,84 @@ export function subscribeToBusinessSettings(
 
       const pagoMovil = {
         bank: String(
-          pm.bank || pm.banco || rawBank.pagoMovilBank || DEFAULT_STORE_SETTINGS.pagoMovil.bank
+          rawBank.pagoMovilBank ||
+            pm.bank ||
+            pm.banco ||
+            DEFAULT_STORE_SETTINGS.pagoMovil.bank
         ),
         phone: String(
-          pm.phone || pm.telefono || rawBank.pagoMovilPhone || data.phone || DEFAULT_STORE_SETTINGS.pagoMovil.phone
+          rawBank.pagoMovilPhone ||
+            pm.phone ||
+            pm.telefono ||
+            data.phone ||
+            DEFAULT_STORE_SETTINGS.pagoMovil.phone
         ),
         idNumber: String(
-          pm.idNumber || pm.document || pm.rif || pm.cedula || rawBank.pagoMovilDocument || data.rif || DEFAULT_STORE_SETTINGS.pagoMovil.idNumber
+          rawBank.pagoMovilId ||
+            rawBank.pagoMovilDocument ||
+            pm.idNumber ||
+            pm.document ||
+            pm.rif ||
+            data.rif ||
+            DEFAULT_STORE_SETTINGS.pagoMovil.idNumber
         ),
         accountHolder: String(
-          pm.accountHolder || pm.titular || data.commercialName || DEFAULT_STORE_SETTINGS.pagoMovil.accountHolder
+          rawBank.pagoMovilHolder ||
+            pm.accountHolder ||
+            pm.titular ||
+            data.commercialName ||
+            DEFAULT_STORE_SETTINGS.pagoMovil.accountHolder
         ),
+        qrUrl: resolveOptionalAssetUrl(rawBank.pagoMovilQrUrl || pm.qrUrl),
       };
 
       const transferencia = {
         bank: String(
-          tr.bank || tr.banco || rawBank.transferBank || pagoMovil.bank
+          rawBank.bankTransferName ||
+            rawBank.transferBank ||
+            tr.bank ||
+            tr.banco ||
+            DEFAULT_STORE_SETTINGS.bankDetails.transferencia.bank
         ),
         accountNumber: String(
-          tr.accountNumber || tr.numero || tr.account || rawBank.transferAccount || ''
+          rawBank.bankTransferAccount ||
+            rawBank.transferAccount ||
+            tr.accountNumber ||
+            tr.numero ||
+            DEFAULT_STORE_SETTINGS.bankDetails.transferencia.accountNumber
         ),
-        accountType: String(tr.accountType || tr.tipo || 'Corriente'),
+        accountType: String(
+          rawBank.bankTransferType || tr.accountType || tr.tipo || 'Cuenta Corriente'
+        ),
         idNumber: String(
-          tr.idNumber || tr.rif || tr.document || pagoMovil.idNumber
+          rawBank.bankTransferRif ||
+            tr.idNumber ||
+            tr.rif ||
+            data.rif ||
+            pagoMovil.idNumber
         ),
         accountHolder: String(
-          tr.accountHolder || tr.titular || data.commercialName || pagoMovil.accountHolder
+          rawBank.bankTransferHolder ||
+            tr.accountHolder ||
+            tr.titular ||
+            data.name ||
+            data.commercialName ||
+            DEFAULT_STORE_SETTINGS.bankDetails.transferencia.accountHolder
         ),
       };
 
       const binancePayId = String(
-        bn.payId ||
-          bn.id ||
-          rawBank.binancePayId ||
+        rawBank.binancePayId ||
           rawBank.binanceId ||
+          bn.payId ||
+          bn.id ||
           (typeof rawBank.binance === 'string' ? rawBank.binance : '') ||
           DEFAULT_STORE_SETTINGS.binancePayId
       );
 
       const binance = {
         payId: binancePayId,
-        email: bn.email || rawBank.binanceEmail || '',
+        email: rawBank.binanceEmail || bn.email || data.email || '',
         holder: bn.holder || data.commercialName || DEFAULT_STORE_SETTINGS.workshopName,
       };
 
@@ -283,13 +353,30 @@ export function subscribeToBusinessSettings(
 
       const mappedSettings: StoreSettings = {
         storeName: String(data.onlineStoreName || DEFAULT_STORE_SETTINGS.storeName),
-        workshopName: String(data.commercialName || DEFAULT_STORE_SETTINGS.workshopName),
+        workshopName: String(
+          data.commercialName || data.name || DEFAULT_STORE_SETTINGS.workshopName
+        ),
         rif: String(data.rif || data.document || pagoMovil.idNumber || DEFAULT_STORE_SETTINGS.rif),
+        email: data.email ? String(data.email) : DEFAULT_STORE_SETTINGS.email,
+        city: data.city ? String(data.city) : DEFAULT_STORE_SETTINGS.city,
+        state: data.state ? String(data.state) : DEFAULT_STORE_SETTINGS.state,
         phoneWhatsapp: normalizedWhatsapp,
         phoneCall: String(data.phone || DEFAULT_STORE_SETTINGS.phoneCall),
         address: String(data.address || DEFAULT_STORE_SETTINGS.address),
-        operatingHours: String(data.operatingHours || DEFAULT_STORE_SETTINGS.operatingHours),
+        operatingHours: String(
+          data.operatingHours || DEFAULT_STORE_SETTINGS.operatingHours
+        ),
         bcvRate: !isNaN(parsedBcv) && parsedBcv > 0 ? parsedBcv : undefined,
+        bcvOfficialDate: data.bcvOfficialDate ? String(data.bcvOfficialDate) : undefined,
+        bcvLastUpdated: data.bcvLastUpdated ? String(data.bcvLastUpdated) : undefined,
+        bcvSource: data.bcvSource ? String(data.bcvSource) : undefined,
+        customCategories: Array.isArray(data.customCategories)
+          ? data.customCategories.map(String)
+          : undefined,
+        warrantyPolicy: data.warrantyPolicy ? String(data.warrantyPolicy) : undefined,
+        invoiceDisclaimer: data.invoiceDisclaimer
+          ? String(data.invoiceDisclaimer)
+          : undefined,
         bankDetails: {
           pagoMovil,
           transferencia,
@@ -332,9 +419,11 @@ function formatFirestoreDate(val: unknown): string {
 function normalizeStatusKey(rawStatus: string): WorkshopServiceStatus {
   const s = rawStatus.toLowerCase().trim();
   if (s.includes('entregad')) return 'entregada';
-  if (s.includes('list') || s.includes('complet') || s.includes('terminad')) return 'lista_entrega';
+  if (s.includes('list') || s.includes('complet') || s.includes('terminad'))
+    return 'lista_entrega';
   if (s.includes('calidad') || s.includes('prueba')) return 'control_calidad';
-  if (s.includes('repar') || s.includes('proceso') || s.includes('trabaj')) return 'en_reparacion';
+  if (s.includes('repar') || s.includes('proceso') || s.includes('trabaj'))
+    return 'en_reparacion';
   if (s.includes('repuest') || s.includes('espera')) return 'espera_repuestos';
   if (s.includes('diagn')) return 'diagnostico';
   return 'recepcion';
@@ -350,16 +439,26 @@ function digitsOnly(val: unknown): string {
   return String(val ?? '').replace(/\D/g, '');
 }
 
-function matchesSearchTerm(queryClean: string, queryDigits: string, candidate: unknown): boolean {
+function matchesSearchTerm(
+  queryClean: string,
+  queryDigits: string,
+  candidate: unknown
+): boolean {
   if (!candidate) return false;
   const candClean = cleanCompareString(candidate);
   if (!candClean) return false;
-  if (candClean.includes(queryClean) || (candClean.length >= 5 && queryClean.includes(candClean))) {
+  if (
+    candClean.includes(queryClean) ||
+    (candClean.length >= 5 && queryClean.includes(candClean))
+  ) {
     return true;
   }
   if (queryDigits.length >= 6) {
     const candDigits = digitsOnly(candidate);
-    if (candDigits && (candDigits.includes(queryDigits) || queryDigits.includes(candDigits))) {
+    if (
+      candDigits &&
+      (candDigits.includes(queryDigits) || queryDigits.includes(candDigits))
+    ) {
       return true;
     }
   }
@@ -367,7 +466,7 @@ function matchesSearchTerm(queryClean: string, queryDigits: string, candidate: u
 }
 
 /**
- * Searches `serviceOrders` and `sales` collections in Firestore by phone, cédula/RIF, or motorcycle plate.
+ * Searches `customers`, `serviceOrders`, and `sales` in Firestore by phone, cédula/documentId, or motorcycle plate.
  */
 export async function searchCustomerPortal(rawQuery: string): Promise<{
   serviceOrders: WorkshopOrder[];
@@ -383,16 +482,37 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
   const sales: SaleRecord[] = [];
 
   try {
-    const [ordersSnap, salesSnap] = await Promise.all([
+    const [customersSnap, ordersSnap, salesSnap] = await Promise.all([
+      getDocs(collection(db, 'customers')),
       getDocs(collection(db, 'serviceOrders')),
       getDocs(collection(db, 'sales')),
     ]);
+
+    // Find matching customer IDs so searching by cédula also matches serviceOrders linked by customerId
+    const matchedCustomerIds = new Set<string>();
+    const customerDocMap = new Map<string, string>();
+    customersSnap.forEach((docSnap) => {
+      const c = docSnap.data() as Record<string, any>;
+      if (c.documentId) customerDocMap.set(docSnap.id, String(c.documentId));
+
+      const custMatch =
+        matchesSearchTerm(queryClean, queryDigits, c.documentId) ||
+        matchesSearchTerm(queryClean, queryDigits, c.document) ||
+        matchesSearchTerm(queryClean, queryDigits, c.phone) ||
+        matchesSearchTerm(queryClean, queryDigits, docSnap.id);
+
+      if (custMatch) {
+        matchedCustomerIds.add(docSnap.id);
+        if (c.id) matchedCustomerIds.add(String(c.id));
+      }
+    });
 
     ordersSnap.forEach((docSnap) => {
       const d = docSnap.data() as Record<string, any>;
       const moto = d.motorcycle || {};
 
       const isMatch =
+        (d.customerId && matchedCustomerIds.has(String(d.customerId))) ||
         matchesSearchTerm(queryClean, queryDigits, d.customerPhone) ||
         matchesSearchTerm(queryClean, queryDigits, d.clientPhone) ||
         matchesSearchTerm(queryClean, queryDigits, d.customerDocument) ||
@@ -416,8 +536,9 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
 
       const partsUsed = rawParts.map((p: any) => ({
         name: String(p.name || p.productName || p.description || 'Repuesto'),
+        sku: p.sku ? String(p.sku) : undefined,
         quantity: Number(p.quantity ?? p.qty ?? 1),
-        priceUsd: Number(p.priceUsd ?? p.unitPrice ?? p.price ?? 0),
+        priceUsd: Number(p.unitPrice ?? p.priceUsd ?? p.price ?? 0),
       }));
 
       const rawWorkDone = Array.isArray(d.workDone)
@@ -428,11 +549,13 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
         ? [String(d.diagnosis)]
         : [];
 
-      const laborUsd = Number(d.laborUsd ?? d.laborCost ?? d.manoDeObra ?? 0);
+      const laborUsd = Number(d.laborCost ?? d.laborUsd ?? d.manoDeObra ?? 0);
       const totalUsd = Number(
-        d.totalUsd ??
+        d.totalCost ??
+          d.totalUsd ??
           d.total ??
-          partsUsed.reduce((sum: number, p: any) => sum + p.priceUsd * p.quantity, 0) + laborUsd
+          partsUsed.reduce((sum: number, p: any) => sum + p.priceUsd * p.quantity, 0) +
+            laborUsd
       );
 
       serviceOrders.push({
@@ -440,23 +563,49 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
         orderNumber: String(d.orderNumber || d.code || docSnap.id.slice(-8).toUpperCase()),
         clientName: String(d.customerName || d.clientName || 'Cliente'),
         clientPhone: String(d.customerPhone || d.clientPhone || ''),
-        clientIdNumber: String(d.customerDocument || d.clientIdNumber || ''),
+        clientIdNumber: String(
+          d.customerDocument ||
+            d.clientIdNumber ||
+            (d.customerId ? customerDocMap.get(String(d.customerId)) || '' : '')
+        ),
         bikeBrand: String(moto.brand || d.bikeBrand || ''),
         bikeModel: String(moto.model || d.bikeModel || 'Motocicleta'),
         bikePlate: String(moto.plate || d.bikePlate || d.plate || 'S/P'),
         bikeColor: String(moto.color || d.bikeColor || 'No especificado'),
+        bikeYear: moto.year ? String(moto.year) : undefined,
+        serviceType: d.serviceType ? String(d.serviceType) : undefined,
+        fuelLevel: d.fuelLevel ? String(d.fuelLevel) : undefined,
         entryDate: formatFirestoreDate(d.entryDate || d.createdAt),
-        estimatedDeliveryDate: d.estimatedDeliveryDate
-          ? formatFirestoreDate(d.estimatedDeliveryDate)
-          : 'Por confirmar en taller',
+        estimatedDeliveryDate:
+          d.estimatedDelivery || d.estimatedDeliveryDate
+            ? formatFirestoreDate(d.estimatedDelivery || d.estimatedDeliveryDate)
+            : 'Por confirmar en taller',
         status: normalizeStatusKey(rawStatus),
-        statusLabel: rawStatus,
-        mechanicInCharge: String(d.mechanicInCharge || d.mechanic || d.technician || 'Equipo Técnico Servimotos CC'),
-        issueReported: String(d.issueReported || d.problemDescription || d.notes || 'Servicio técnico general'),
-        workDone: rawWorkDone.length > 0 ? rawWorkDone : ['Revisión técnica en curso'],
+        statusLabel: rawStatus.replace(/_/g, ' '),
+        mechanicInCharge: String(
+          d.assignedTechnician ||
+            d.mechanicInCharge ||
+            d.mechanic ||
+            'Equipo Técnico Servimotos CC'
+        ),
+        mechanicPhone: d.assignedTechnicianPhone
+          ? String(d.assignedTechnicianPhone)
+          : undefined,
+        issueReported: String(
+          d.reportedIssue ||
+            d.issueReported ||
+            d.problemDescription ||
+            d.serviceType ||
+            'Servicio técnico general'
+        ),
+        workDone:
+          rawWorkDone.length > 0
+            ? rawWorkDone
+            : [d.serviceType ? `Servicio: ${d.serviceType}` : 'Revisión técnica en curso'],
         partsUsed,
         laborUsd,
         totalUsd,
+        totalBs: d.totalCostBs ? Number(d.totalCostBs) : undefined,
         notes: d.notes ? String(d.notes) : undefined,
         mileageKm: Number(moto.mileage ?? d.mileageKm ?? 0),
       });
@@ -467,6 +616,7 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
       const moto = d.motorcycle || {};
 
       const isMatch =
+        (d.customerId && matchedCustomerIds.has(String(d.customerId))) ||
         matchesSearchTerm(queryClean, queryDigits, d.customerPhone) ||
         matchesSearchTerm(queryClean, queryDigits, d.customerDocument) ||
         matchesSearchTerm(queryClean, queryDigits, moto.plate) ||
@@ -477,20 +627,24 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
 
       if (!isMatch) return;
 
-      const rawItems = Array.isArray(d.items) ? d.items : Array.isArray(d.products) ? d.products : [];
+      const rawItems = Array.isArray(d.items)
+        ? d.items
+        : Array.isArray(d.products)
+        ? d.products
+        : [];
       const items = rawItems.map((it: any) => {
         const qty = Number(it.quantity ?? it.qty ?? 1);
-        const unit = Number(it.unitPriceUsd ?? it.salePrice ?? it.price ?? it.unitPrice ?? 0);
+        const unit = Number(it.unitPrice ?? it.unitPriceUsd ?? it.salePrice ?? it.price ?? 0);
         return {
           name: String(it.name || it.productName || 'Artículo'),
           sku: it.sku ? String(it.sku) : undefined,
           quantity: qty,
           unitPriceUsd: unit,
-          totalUsd: Number(it.subtotalUsd ?? it.total ?? unit * qty),
+          totalUsd: Number(it.total ?? it.subtotalUsd ?? unit * qty),
         };
       });
 
-      const totalUsd = Number(d.totalUsd ?? d.total ?? d.amountUsd ?? 0);
+      const totalUsd = Number(d.total ?? d.totalUsd ?? d.amountUsd ?? 0);
       const bcvUsed = Number(d.bcvRate ?? d.exchangeRate ?? 0);
       const totalBs = Number(d.totalBs ?? (bcvUsed > 0 ? totalUsd * bcvUsed : 0));
 
@@ -500,10 +654,19 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
         date: formatFirestoreDate(d.date || d.createdAt),
         customerName: String(d.customerName || 'Cliente'),
         customerPhone: String(d.customerPhone || ''),
-        customerDocument: String(d.customerDocument || ''),
+        customerDocument: String(
+          d.customerDocument ||
+            (d.customerId ? customerDocMap.get(String(d.customerId)) || '' : '')
+        ),
         motorcyclePlate: moto.plate || d.motorcyclePlate || d.plate,
-        motorcycleInfo: moto.brand || moto.model ? `${moto.brand || ''} ${moto.model || ''}`.trim() : undefined,
+        motorcycleInfo:
+          moto.brand || moto.model
+            ? `${moto.brand || ''} ${moto.model || ''}`.trim()
+            : undefined,
         items,
+        subtotalUsd: d.subtotal !== undefined ? Number(d.subtotal) : undefined,
+        discountUsd: d.discount !== undefined ? Number(d.discount) : undefined,
+        taxUsd: d.tax !== undefined ? Number(d.tax) : undefined,
         totalUsd,
         totalBs,
         bcvRateUsed: bcvUsed > 0 ? bcvUsed : undefined,
@@ -512,36 +675,87 @@ export async function searchCustomerPortal(rawQuery: string): Promise<{
       });
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'serviceOrders|sales');
+    handleFirestoreError(error, OperationType.LIST, 'customers|serviceOrders|sales');
     throw error;
   }
 
   return { serviceOrders, sales };
 }
 
+function mapDeliveryTypeEnum(agency: ShippingAgency): string {
+  switch (agency) {
+    case 'Retiro en tienda':
+      return 'RETIRO_TIENDA';
+    case 'Delivery Mérida':
+      return 'DELIVERY_MERIDA';
+    case 'MRW':
+      return 'MRW';
+    case 'Zoom':
+      return 'ZOOM';
+    case 'Tealca':
+      return 'TEALCA';
+    default:
+      return 'RETIRO_TIENDA';
+  }
+}
+
+function mapPaymentMethodLabel(method: PaymentMethodType): string {
+  switch (method) {
+    case 'pago_movil':
+      return 'Pago Móvil';
+    case 'transferencia':
+      return 'Transferencia Bancaria';
+    case 'binance':
+      return 'Binance Pay';
+    case 'divisas':
+      return 'Divisas Efectivo';
+    default:
+      return 'Pago Móvil';
+  }
+}
+
 /**
- * Places a new online order in `onlineOrders/onl-${Date.now()}`,
+ * Places a new online order in `onlineOrders/onl-${Date.now()}` matching the exact schema of the main app,
  * creates/updates the customer in `customers`, and deducts `stock` in `products` atomically.
  */
 export async function placeOnlineOrder(
   cart: CartItem[],
   customer: CustomerData,
   rateBcv: number
-): Promise<{ orderId: string; totalUsd: number; totalBs: number }> {
-  const orderId = `onl-${Date.now()}`;
+): Promise<{ orderId: string; orderCode: string; totalUsd: number; totalBs: number }> {
+  const nowTs = Date.now();
+  const orderId = `onl-${nowTs}`;
+  const orderCode = `PED-${String(nowTs).slice(-4)}`;
   const totalUsd = Number(
     cart.reduce((acc, item) => acc + item.product.priceUsd * item.quantity, 0).toFixed(2)
   );
   const totalBs = Number((totalUsd * rateBcv).toFixed(2));
 
-  const customerDocId =
-    customer.idNumber.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase() ||
-    customer.phone.replace(/\D/g, '') ||
-    `cli-${Date.now()}`;
+  const cleanDocument = customer.idNumber.trim().toUpperCase();
+  const cleanPhone = customer.phone.trim();
+
+  // Check if customer already exists in `customers` by documentId or phone so we don't duplicate
+  let customerDocId = `cust-${nowTs}`;
+  try {
+    const byDoc = await getDocs(
+      query(collection(db, 'customers'), where('documentId', '==', cleanDocument))
+    );
+    if (!byDoc.empty) {
+      customerDocId = byDoc.docs[0].id;
+    } else if (cleanPhone) {
+      const byPhone = await getDocs(
+        query(collection(db, 'customers'), where('phone', '==', cleanPhone))
+      );
+      if (!byPhone.empty) {
+        customerDocId = byPhone.docs[0].id;
+      }
+    }
+  } catch {
+    // fallback to cust-${nowTs}
+  }
 
   try {
     await runTransaction(db, async (transaction) => {
-      // 1. Read and verify stock for all products first (Firestore requires all reads before writes)
       const productUpdates: Array<{ ref: ReturnType<typeof doc>; newStock: number }> = [];
 
       for (const item of cart) {
@@ -562,7 +776,7 @@ export async function placeOnlineOrder(
         });
       }
 
-      // 2. Deduct stock in `products`
+      // 1. Deduct stock in `products`
       for (const upd of productUpdates) {
         transaction.update(upd.ref, {
           stock: upd.newStock,
@@ -570,63 +784,68 @@ export async function placeOnlineOrder(
         });
       }
 
-      // 3. Upsert customer in `customers`
+      // 2. Upsert customer in `customers` matching main app schema
       const customerRef = doc(db, 'customers', customerDocId);
       transaction.set(
         customerRef,
         {
           id: customerDocId,
           name: customer.fullName.trim(),
-          document: customer.idNumber.trim().toUpperCase(),
-          phone: customer.phone.trim(),
+          documentId: cleanDocument,
+          phone: cleanPhone,
           email: customer.email?.trim() || '',
-          cityState: customer.cityState.trim(),
-          lastOrderId: orderId,
+          city: customer.city.trim() || 'Mérida',
+          state: customer.state.trim() || 'Mérida',
+          address:
+            customer.shippingAgency === 'Retiro en tienda'
+              ? 'Retiro en tienda'
+              : customer.agencyOfficeAddress.trim(),
+          notes: customer.notes?.trim() || '',
+          createdAt: new Date(nowTs).toISOString(),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      // 4. Create new order in `onlineOrders` with ID `onl-${Date.now()}`
+      // 3. Create order in `onlineOrders` with exact main-app schema
       const orderRef = doc(db, 'onlineOrders', orderId);
       transaction.set(orderRef, {
         id: orderId,
-        orderNumber: orderId.toUpperCase(),
+        orderCode,
         customerId: customerDocId,
         customerName: customer.fullName.trim(),
-        customerPhone: customer.phone.trim(),
-        customerDocument: customer.idNumber.trim().toUpperCase(),
-        customerEmail: customer.email?.trim() || '',
-        cityState: customer.cityState.trim(),
-        shippingMethod: customer.shippingAgency,
+        customerPhone: cleanPhone,
+        customerDocument: cleanDocument,
+        customerCity: customer.city.trim() || 'Mérida',
+        customerState: customer.state.trim() || 'Mérida',
+        deliveryType: mapDeliveryTypeEnum(customer.shippingAgency),
         shippingAddress:
           customer.shippingAgency === 'Retiro en tienda'
             ? 'Retiro en tienda Servimotos Cristo Centro'
             : customer.agencyOfficeAddress.trim(),
-        paymentMethod: customer.paymentMethod,
-        paymentReference: customer.paymentReference?.trim() || '',
+        paymentMethod: mapPaymentMethodLabel(customer.paymentMethod),
+        paymentProofReference: customer.paymentReference?.trim() || '',
         notes: customer.notes?.trim() || '',
         items: cart.map((item) => ({
           productId: item.product.id,
-          sku: item.product.sku,
+          sku: item.product.sku || item.product.code,
           name: item.product.name,
-          brand: item.product.brand,
+          category: item.product.category,
           quantity: item.quantity,
-          unitPriceUsd: item.product.priceUsd,
-          subtotalUsd: Number((item.product.priceUsd * item.quantity).toFixed(2)),
-          imageUrl: item.product.imageUrl,
+          unitPrice: item.product.priceUsd,
+          total: Number((item.product.priceUsd * item.quantity).toFixed(2)),
         })),
-        totalUsd,
+        total: totalUsd,
         totalBs,
         bcvRate: rateBcv,
-        status: 'Pendiente',
+        status: 'PENDIENTE',
         source: 'Mercado Moto CC',
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(nowTs).toISOString(),
         serverCreatedAt: serverTimestamp(),
       });
     });
 
-    return { orderId, totalUsd, totalBs };
+    return { orderId, orderCode, totalUsd, totalBs };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `onlineOrders/${orderId}`);
     throw error;
@@ -642,7 +861,7 @@ async function hashSecret(secret: string): Promise<string> {
 }
 
 /**
- * Registers a client user in `users` collection with `role: "CLIENTE"`.
+ * Registers a client user in `users` collection with `role: "CLIENTE"` and syncs `customers`.
  */
 export async function registerClientUser(payload: {
   name: string;
@@ -655,10 +874,10 @@ export async function registerClientUser(payload: {
   const cleanDoc = payload.document.trim().toUpperCase();
   const cleanPhone = payload.phone.trim();
   const cleanName = payload.name.trim();
+  const nowTs = Date.now();
 
-  let userId = `cli-${Date.now()}`;
+  let userId = `usr-cli-${nowTs}`;
 
-  // Try Firebase Auth first; if Email/Password isn't enabled on console, fallback gracefully to Firestore users collection
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, payload.password);
     userId = cred.user.uid;
@@ -671,22 +890,11 @@ export async function registerClientUser(payload: {
     if (code === 'auth/weak-password') {
       throw new Error('La clave debe tener al menos 6 caracteres.');
     }
-    if (code !== 'auth/operation-not-allowed') {
-      // Check if user already exists in Firestore users collection
-      const existingSnap = await getDocs(
-        query(collection(db, 'users'), where('email', '==', cleanEmail))
-      );
-      if (!existingSnap.empty) {
-        throw new Error('Este correo electrónico ya está registrado.');
-      }
-    } else {
-      // Check duplicate in Firestore when auth/operation-not-allowed
-      const existingSnap = await getDocs(
-        query(collection(db, 'users'), where('email', '==', cleanEmail))
-      );
-      if (!existingSnap.empty) {
-        throw new Error('Este correo electrónico ya está registrado. Intenta iniciar sesión.');
-      }
+    const existingSnap = await getDocs(
+      query(collection(db, 'users'), where('email', '==', cleanEmail))
+    );
+    if (!existingSnap.empty) {
+      throw new Error('Este correo electrónico ya está registrado. Intenta iniciar sesión.');
     }
   }
 
@@ -699,27 +907,45 @@ export async function registerClientUser(payload: {
     phone: cleanPhone,
     email: cleanEmail,
     role: 'CLIENTE',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(nowTs).toISOString(),
   };
 
   try {
     await setDoc(doc(db, 'users', userId), {
-      ...clientProfile,
+      id: userId,
+      name: cleanName,
+      documentId: cleanDoc,
+      phone: cleanPhone,
+      email: cleanEmail,
+      role: 'CLIENTE',
+      hasCustomPassword: true,
       passwordHash,
+      createdAt: clientProfile.createdAt,
+      passwordUpdatedAt: clientProfile.createdAt,
       updatedAt: serverTimestamp(),
     });
 
-    // Also register in customers collection for seamless checkout & workshop lookup
-    const customerDocId = cleanDoc.replace(/[^a-zA-Z0-9]/g, '') || cleanPhone.replace(/\D/g, '') || userId;
+    // Upsert customer in `customers`
+    let customerDocId = `cust-${nowTs}`;
+    const byDoc = await getDocs(
+      query(collection(db, 'customers'), where('documentId', '==', cleanDoc))
+    );
+    if (!byDoc.empty) {
+      customerDocId = byDoc.docs[0].id;
+    }
+
     await setDoc(
       doc(db, 'customers', customerDocId),
       {
         id: customerDocId,
         userId,
         name: cleanName,
-        document: cleanDoc,
+        documentId: cleanDoc,
         phone: cleanPhone,
         email: cleanEmail,
+        city: 'Mérida',
+        state: 'Mérida',
+        createdAt: clientProfile.createdAt,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -749,7 +975,7 @@ export async function loginClientUser(payload: {
       return {
         id: cred.user.uid,
         name: String(d.name || cred.user.displayName || 'Cliente'),
-        document: String(d.document || ''),
+        document: String(d.documentId || d.document || ''),
         phone: String(d.phone || ''),
         email: cleanEmail,
         role: 'CLIENTE',
@@ -766,32 +992,12 @@ export async function loginClientUser(payload: {
     };
   } catch (authErr: any) {
     const code = authErr?.code || '';
-    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-      // Still verify Firestore hash fallback if created without Firebase Email Auth
-      const snap = await getDocs(
-        query(collection(db, 'users'), where('email', '==', cleanEmail))
-      );
-      if (snap.empty) {
-        throw new Error('Correo o clave incorrectos.');
-      }
-      const userDoc = snap.docs[0];
-      const d = userDoc.data();
-      const inputHash = await hashSecret(payload.password);
-      if (d.passwordHash && d.passwordHash === inputHash) {
-        return {
-          id: userDoc.id,
-          name: String(d.name || 'Cliente'),
-          document: String(d.document || ''),
-          phone: String(d.phone || ''),
-          email: cleanEmail,
-          role: 'CLIENTE',
-          createdAt: d.createdAt,
-        };
-      }
-      throw new Error('Correo o clave incorrectos.');
-    }
-
-    if (code === 'auth/operation-not-allowed' || code === 'auth/user-not-found') {
+    if (
+      code === 'auth/wrong-password' ||
+      code === 'auth/invalid-credential' ||
+      code === 'auth/operation-not-allowed' ||
+      code === 'auth/user-not-found'
+    ) {
       const snap = await getDocs(
         query(collection(db, 'users'), where('email', '==', cleanEmail))
       );
@@ -801,18 +1007,18 @@ export async function loginClientUser(payload: {
       const userDoc = snap.docs[0];
       const d = userDoc.data();
       const inputHash = await hashSecret(payload.password);
-      if (d.passwordHash !== inputHash) {
-        throw new Error('Clave incorrecta.');
+      if (d.passwordHash && d.passwordHash === inputHash) {
+        return {
+          id: userDoc.id,
+          name: String(d.name || 'Cliente'),
+          document: String(d.documentId || d.document || ''),
+          phone: String(d.phone || ''),
+          email: cleanEmail,
+          role: 'CLIENTE',
+          createdAt: d.createdAt,
+        };
       }
-      return {
-        id: userDoc.id,
-        name: String(d.name || 'Cliente'),
-        document: String(d.document || ''),
-        phone: String(d.phone || ''),
-        email: cleanEmail,
-        role: 'CLIENTE',
-        createdAt: d.createdAt,
-      };
+      throw new Error('Correo o clave incorrectos.');
     }
 
     throw new Error(authErr?.message || 'Error al iniciar sesión.');

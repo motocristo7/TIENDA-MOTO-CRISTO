@@ -32,6 +32,9 @@ interface StoreContextType {
   cartTotalBs: number;
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
+  cartStep: 'cart' | 'checkout' | 'confirmed';
+  setCartStep: (step: 'cart' | 'checkout' | 'confirmed') => void;
+  buyNow: (product: Product, quantity?: number) => void;
   selectedBrand: MotoBrand;
   setSelectedBrand: (brand: MotoBrand) => void;
   selectedCategory: ProductCategory;
@@ -88,7 +91,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   });
 
-  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isCartOpen, setIsCartOpenState] = useState<boolean>(false);
+  const [cartStep, setCartStep] = useState<'cart' | 'checkout' | 'confirmed'>('cart');
+  const setIsCartOpen = useCallback((open: boolean) => {
+    if (open) {
+      setCartStep((prev) => (prev === 'confirmed' ? 'cart' : prev));
+    }
+    setIsCartOpenState(open);
+  }, []);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [selectedBrand, setSelectedBrand] = useState<MotoBrand>('Todas');
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('Todas');
@@ -149,8 +159,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (firestoreBcvRate && firestoreBcvRate > 0) {
           setBcvRateInfo({
             rateBcv: firestoreBcvRate,
-            lastUpdated: new Date().toISOString(),
-            source: `${liveSettings.workshopName} (Firestore en vivo)`,
+            lastUpdated: liveSettings.bcvLastUpdated || new Date().toISOString(),
+            officialDate: liveSettings.bcvOfficialDate,
+            source: liveSettings.bcvSource || `${liveSettings.workshopName} (Firestore en vivo)`,
             isCustom: false,
           });
         } else {
@@ -213,7 +224,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       return [...prev, { product, quantity: Math.min(quantity, product.stock) }];
     });
-    showToast(`Añadido al carrito: ${product.name}`);
+    showToast(`Al carrito: ${product.name}`);
+  };
+
+  const buyNow = (product: Product, quantity = 1) => {
+    if (product.stock <= 0) {
+      showToast('Este repuesto no tiene stock disponible.');
+      return;
+    }
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
+        return prev;
+      }
+      return [...prev, { product, quantity: Math.min(quantity, product.stock) }];
+    });
+    setCartStep('checkout');
+    setIsCartOpenState(true);
   };
 
   const removeFromCart = (productId: string) => {
@@ -262,6 +289,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         cartTotalBs,
         isCartOpen,
         setIsCartOpen,
+        cartStep,
+        setCartStep,
+        buyNow,
         selectedBrand,
         setSelectedBrand,
         selectedCategory,
